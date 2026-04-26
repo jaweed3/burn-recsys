@@ -1,18 +1,14 @@
-/// Recommendation serving API (Axum + Tokio).
-///
-/// Run:
-///   cargo run --release --bin server -- \
-///       --model checkpoints/best --num-users 10000 --num-items 7988
+/// Recommendation serving API (Axum + Shuttle).
 ///
 /// Endpoints:
 ///   POST /recommend   body: {"user_id": 0, "candidates": [1, 2, 3, ...]}
 ///   GET  /health
 ///
-///   curl -s http://localhost:3000/health
-///   curl -s -X POST http://localhost:3000/recommend \
+///   curl -s http://localhost:8000/health
+///   curl -s -X POST http://localhost:8000/recommend \
 ///       -H 'Content-Type: application/json' \
 ///       -d '{"user_id": 0, "candidates": [1,2,3,4,5]}'
-use axum::{
+use shuttle_axum::axum::{
     extract::State,
     http::StatusCode,
     response::IntoResponse,
@@ -26,41 +22,23 @@ use burn::{
     tensor::{activation::sigmoid, backend::Backend, Int, Tensor},
 };
 use burn_recsys::models::ncf::{NeuMF, NeuMFConfig};
-use clap::Parser;
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Instant};
+use shuttle_runtime::{CustomError, SecretStore};
+use std::{path::PathBuf, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use tracing::{info, instrument, warn};
 
 type B = NdArray<f32>;
 
-// ── CLI ───────────────────────────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
 
-#[derive(Parser, Debug)]
-#[command(about = "Recommendation model serving API")]
-struct Args {
-    /// Path to model checkpoint (CompactRecorder format)
-    #[arg(long, default_value = "checkpoints/best")]
-    model: String,
-
-    /// Number of users in the model vocabulary
-    #[arg(long)]
+#[derive(Deserialize)]
+struct Settings {
+    // Note: The `model` path is now handled by `StaticFolder`
+    // and injected into the main service function.
     num_users: usize,
-
-    /// Number of items in the model vocabulary
-    #[arg(long)]
     num_items: usize,
-
-    /// Port to listen on
-    #[arg(long, default_value_t = 3000)]
-    port: u16,
-
-    /// GMF embedding dimension (must match checkpoint)
-    #[arg(long, default_value_t = 64)]
     gmf_dim: usize,
-
-    /// MLP embedding dimension (must match checkpoint)
-    #[arg(long, default_value_t = 64)]
     mlp_embed_dim: usize,
 }
 
@@ -116,7 +94,8 @@ async fn recommend(
                     payload.user_id, state.num_users
                 )
             })),
-        ).into_response();
+        )
+            .into_response();
     }
 
     let candidates = if payload.candidates.is_empty() {
@@ -135,7 +114,8 @@ async fn recommend(
                     bad, state.num_items
                 )
             })),
-        ).into_response();
+        )
+            .into_response();
     }
 
     let t0 = Instant::now();
@@ -173,54 +153,68 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     }))
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Main: Shuttle Entrypoint ──────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("burn_recsys=info".parse()?)
-                .add_directive("info".parse()?),
-        )
-        .compact()
-        .init();
+#[shuttle_runtime::main]
+async fn axum(
+    #[shuttle_runtime::Secrets] secrets: SecretStore,
+) -> shuttle_axum::ShuttleAxum {
+    let model_folder = PathBuf::from("checkpoints");
+    // Manually parse settings from the secrets map.
+    let settings = Settings {
+        num_users: secrets
+            .get("num_users")
+            .ok_or_else(|| CustomError::msg("num user not found"))?
+            .parse()
+            .map_err(|_| CustomError::msg("num user invalid"))?,
+        num_items: secrets
+            .get("num_items")
+            .ok_or_else(|| CustomError::msg("num item not found"))?
+            .parse()
+            .map_err(|_| CustomError::msg("num item invalid"))?,
+        gmf_dim: secrets
+            .get("gmf_dim")
+            .ok_or_else(|| CustomError::msg("gmf dim not found"))?
+            .parse()
+            .map_err(|_| CustomError::msg("gmf dim invalid"))?,
+        mlp_embed_dim: secrets
+            .get("mlp_embed_dim")
+            .ok_or_else(|| CustomError::msg("mlp embed dim not found"))?
+            .parse()
+            .map_err(|_| CustomError::msg("mlp embed dim invalid"))?,
+    };
 
-    let args = Args::parse();
-
-    info!("Loading model from {}...", args.model);
+    // The model file is expected to be 'best.mpk' inside the static folder.
+    let model_path = model_folder.join("best.mpk");
+    info!("Loading model from {:?}...", &model_path);
     let device: <B as Backend>::Device = Default::default();
 
     let model_config = NeuMFConfig {
-        num_users: args.num_users,
-        num_items: args.num_items,
-        gmf_dim: args.gmf_dim,
+        num_users: settings.num_users,
+        num_items: settings.num_items,
+        gmf_dim: settings.gmf_dim,
         mlp_layers: vec![128, 64, 32, 16],
-        mlp_embed_dim: args.mlp_embed_dim,
+        mlp_embed_dim: settings.mlp_embed_dim,
     };
 
     let model = model_config
         .init::<B>(&device)
-        .load_file(&args.model, &CompactRecorder::new(), &device)
-        .map_err(|e| anyhow::anyhow!("Failed to load {}: {e}", args.model))?;
+        .load_file(&model_path, &CompactRecorder::new(), &device)
+        .map_err(|e| CustomError::msg(format!("model not found! failed to load model {}", e)))?;
 
-    info!("Model loaded ({} users, {} items)", args.num_users, args.num_items);
+    info!("Model loaded ({} users, {} items)", settings.num_users, settings.num_items);
 
     let state = Arc::new(AppState {
         model: Mutex::new(model),
         device,
-        num_users: args.num_users,
-        num_items: args.num_items,
+        num_users: settings.num_users,
+        num_items: settings.num_items,
     });
 
-    let app = Router::new()
+    let router = Router::new()
         .route("/recommend", post(recommend))
         .route("/health", get(health))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port)).await?;
-    info!("Listening on http://0.0.0.0:{}", args.port);
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    Ok(router.into())
 }
