@@ -44,10 +44,12 @@ polars         = { version = "0.46", features = ["csv", "lazy", "strings"] }
 csv            = "1"
 
 # Serving
-axum           = "0.7"
 tokio          = { version = "1", features = ["full"] }
 tower          = "0.4"
 tower-http     = { version = "0.5", features = ["trace"] }
+shuttle-runtime = "0.57.0"
+shuttle-axum = "0.57.0"
+shuttle-static-folder = "0.28.0"
 
 # Serialization
 serde          = { version = "1", features = ["derive"] }
@@ -60,9 +62,6 @@ opentelemetry         = { version = "0.22", features = ["metrics"] }
 opentelemetry_sdk     = { version = "0.22", features = ["rt-tokio", "metrics"] }
 opentelemetry-stdout  = { version = "0.3", features = ["metrics"] }
 tracing-opentelemetry = "0.23"
-
-# CLI
-clap     = { version = "4", features = ["derive"] }
 
 # Config serialization
 toml     = "0.8"
