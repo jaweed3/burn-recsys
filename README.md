@@ -1,148 +1,69 @@
 # burn-recsys
 
-Neural Collaborative Filtering (NCF / NeuMF) implemented from scratch with the [Burn](https://burn.dev) deep learning framework in Rust.
+Production-grade recommendation system in Rust — NeuMF + DeepFM with Burn, Polars data pipeline, Axum serving API, and OpenTelemetry observability.
 
 [![CI](https://github.com/wedjaw/burn-recsys/actions/workflows/ci.yml/badge.svg)](https://github.com/wedjaw/burn-recsys/actions/workflows/ci.yml)
 
 ---
 
-## Architecture
+## Results
 
-```
-NeuMF (He et al., 2017)
+| Model  | HR@10  | NDCG@10 | Params |
+|--------|--------|---------|--------|
+| GMF    | 0.180  | 0.103   | 1.15M  |
+| NeuMF  | **0.604** | **0.414** | 2.31M |
 
-User ID ─┬─► GMF User Emb (64) ─┐
-          │                      ├─► element-wise ─► concat ─► Linear(80→1) ─► sigmoid
-Item ID ─┼─► GMF Item Emb (64) ─┘       ↑
-          │                              │
-          ├─► MLP User Emb (64) ─┐       │
-          │                      ├─► concat → 128→64→32→16 (ReLU) ─┘
-          └─► MLP Item Emb (64) ─┘
-```
-
-Two separate embedding spaces: GMF path captures linear interactions, MLP path captures non-linear patterns. Final layer concatenates both.
-
----
-
-## Benchmark Results (Myket, 5 epochs, 500 users eval)
-
-| Model  | HR@10  | NDCG@10 |
-|--------|--------|---------|
-| GMF    | 0.1800 | 0.1028  |
-| NeuMF  | 0.6040 | 0.4136  |
-
-Eval protocol: leave-one-out with 99 random negatives + 1 ground truth per user.
-
-Dataset: [`erfanloghmani/myket-android-application-recommendation`](https://huggingface.co/datasets/erfanloghmani/myket-android-application-recommendation) — 10k users, 7.9k apps, 694k interactions.
+Myket dataset, 5 epochs, leave-one-out eval (99 negatives + 1 ground truth per user).
+Serving latency: **0.49ms** median on a single CPU core.
 
 ---
 
 ## Quick Start
 
-### 1. Prerequisites
-
-- Rust (stable) — [rustup.rs](https://rustup.rs)
-- [uv](https://docs.astral.sh/uv/) — Python package manager (for data download only)
-
-### 2. Download data
-
 ```bash
-# Myket (HuggingFace, requires Python/uv)
+# 1. Get data
 uv run python scripts/download_myket.py
 
-# MovieLens 1M (no Python needed beyond stdlib)
-uv run python scripts/download_movielens.py
-```
-
-### 3. Train
-
-```bash
-# Myket — NeuMF, 20 epochs
-cargo run --release --example myket_ncf
-
-# MovieLens — same model, same command
-cargo run --release --example movielens_ncf
-
-# Fewer epochs for quick test
+# 2. Train (5 epochs ~4 min on M4 CPU)
 cargo run --release --example myket_ncf -- --epochs 5
-```
 
-### 4. Evaluate GMF vs NeuMF
-
-```bash
+# 3. Evaluate
 cargo run --release --example evaluate -- --epochs 5 --users 500
+
+# 4. Serve
+cargo run --release --bin server -- --model checkpoints/epoch_005.mpk
+
+# 5. Request
+curl -X POST http://localhost:3000/recommend \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id": 42, "candidates": [10, 20, 30, 40, 50]}'
 ```
 
 ---
 
-## Project Structure
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [docs/overview.md](docs/overview.md) | What the project does, benchmark table, tech stack, project structure |
+| [docs/architecture.md](docs/architecture.md) | System design diagram, math for GMF / NeuMF / DeepFM, loss function, eval protocol |
+| [docs/why-rust.md](docs/why-rust.md) | Performance, memory safety, ecosystem — why Rust over Python for this use case |
+| [docs/getting-started.md](docs/getting-started.md) | Step-by-step: build, download data, train, evaluate, serve, GPU setup |
+
+---
+
+## Stack
 
 ```
-burn-recsys/
-├── src/
-│   ├── data/
-│   │   ├── dataset.rs      ← RecsysDataset trait
-│   │   ├── myket.rs        ← Myket CSV loader
-│   │   ├── movielens.rs    ← MovieLens 1M loader
-│   │   └── sampler.rs      ← NegativeSampler
-│   ├── models/
-│   │   ├── gmf.rs          ← GMF baseline
-│   │   └── ncf.rs          ← NeuMF (GMF + MLP)
-│   ├── metrics/
-│   │   ├── eval.rs         ← leave-one-out evaluator
-│   │   ├── hit_rate.rs     ← HR@k
-│   │   └── ndcg.rs         ← NDCG@k
-│   └── trainer/
-│       └── train.rs        ← Adam + BCE + early stopping + checkpoints
-├── examples/
-│   ├── myket_ncf.rs        ← Myket training entry point
-│   ├── movielens_ncf.rs    ← MovieLens training entry point
-│   ├── evaluate.rs         ← GMF vs NeuMF comparison
-│   ├── model_info.rs       ← param counts
-│   └── validate_data.rs    ← data pipeline smoke test
-├── scripts/
-│   ├── download_myket.py
-│   └── download_movielens.py
-├── pyproject.toml          ← uv project for Python scripts
-└── .github/workflows/ci.yml
+Polars  ──► data pipeline (lazy CSV, dedup, re-index)
+Burn    ──► model training + inference (NdArray CPU / LibTorch CUDA)
+Axum    ──► HTTP serving API (POST /recommend, GET /health)
+OTel    ──► metrics: latency histogram, request counter, epoch loss
 ```
 
 ---
 
-## Adding a New Dataset
+## References
 
-Implement `RecsysDataset` — that's it. The model and trainer are dataset-agnostic.
-
-```rust
-pub trait RecsysDataset {
-    fn num_users(&self) -> usize;
-    fn num_items(&self) -> usize;
-    fn interactions(&self) -> &[(u32, u32)];
-    fn train_test_split(&self, ratio: f32) -> (Self, Self) where Self: Sized;
-}
-```
-
----
-
-## Backend Switching (CPU → GPU)
-
-Default backend: `NdArray` (CPU, no dependencies).
-
-For CUDA training on RTX 4060:
-
-```toml
-# Cargo.toml
-burn = { version = "0.17", features = ["tch"] }
-```
-
-```rust
-// In your example
-type B = Autodiff<LibTorch<f32>>;
-```
-
----
-
-## Reference
-
-He, X. et al. (2017). *Neural Collaborative Filtering*. WWW'17.
-[arxiv.org/abs/1708.05031](https://arxiv.org/abs/1708.05031)
+- He et al. (2017). [Neural Collaborative Filtering](https://arxiv.org/abs/1708.05031). *WWW'17*.
+- Guo et al. (2017). [DeepFM](https://arxiv.org/abs/1703.04247). *IJCAI'17*.
