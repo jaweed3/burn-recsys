@@ -61,6 +61,12 @@ opentelemetry_sdk     = { version = "0.22", features = ["rt-tokio", "metrics"] }
 opentelemetry-stdout  = { version = "0.3", features = ["metrics"] }
 tracing-opentelemetry = "0.23"
 
+# CLI
+clap     = { version = "4", features = ["derive"] }
+
+# Config serialization
+toml     = "0.8"
+
 # Utilities
 rand     = { version = "0.8", features = ["small_rng"] }
 anyhow   = "1"
