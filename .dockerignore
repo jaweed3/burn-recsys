@@ -1,0 +1,13 @@
+# Ignore build artifacts
+target/
+# Ignore git history
+.git/
+# Ignore python virtual environment
+.venv/
+# Ignore local temporary files
+.DS_Store
+# Ignore local configuration files if any are added later
+*.local
+# Ignore IDE files
+.idea/
+.vscode/

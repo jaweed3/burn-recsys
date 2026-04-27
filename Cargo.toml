@@ -44,12 +44,10 @@ polars         = { version = "0.46", features = ["csv", "lazy", "strings"] }
 csv            = "1"
 
 # Serving
+axum           = "0.7"
 tokio          = { version = "1", features = ["full"] }
 tower          = "0.4"
 tower-http     = { version = "0.5", features = ["trace"] }
-shuttle-runtime = "0.57.0"
-shuttle-axum = "0.57.0"
-shuttle-static-folder = "0.28.0"
 
 # Serialization
 serde          = { version = "1", features = ["derive"] }
@@ -57,11 +55,17 @@ serde_json     = "1"
 
 # Observability
 tracing               = "0.1"
-tracing-subscriber    = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber    = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 opentelemetry         = { version = "0.22", features = ["metrics"] }
 opentelemetry_sdk     = { version = "0.22", features = ["rt-tokio", "metrics"] }
 opentelemetry-stdout  = { version = "0.3", features = ["metrics"] }
 tracing-opentelemetry = "0.23"
+
+# Configuration
+config   = { version = "0.14", features = ["toml"] }
+
+# CLI
+clap     = { version = "4", features = ["derive"] }
 
 # Config serialization
 toml     = "0.8"
@@ -75,6 +79,9 @@ env_logger = "0.11"
 [dev-dependencies]
 burn = { version = "0.17", features = ["ndarray", "autodiff"] }
 tempfile = "3"
+reqwest = { version = "0.12", features = ["json"] }
+portpicker = "0.1.1"
+once_cell = "1.19"
 
 [features]
 default = []
