@@ -1,0 +1,13 @@
+# Default configuration for the recommendation server
+# These values can be overridden by environment variables
+# with the `APP_` prefix, e.g., `APP_PORT=8000`.
+
+model = "checkpoints/best.mpk" # Default model path
+port = 3000
+
+# Model-specific parameters
+num_users = 10000
+num_items = 7988
+gmf_dim = 64
+mlp_embed_dim = 64
+mlp_layers = [128, 64, 32, 16]
