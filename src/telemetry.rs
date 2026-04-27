@@ -1,12 +1,9 @@
 /// OpenTelemetry + tracing setup.
-///
-/// Call `init()` at the start of main. Spans and metrics are exported
-/// to stdout in OTLP-compatible JSON — pipe to Jaeger/Prometheus later.
 use opentelemetry::metrics::{Counter, Histogram, Meter};
 use opentelemetry::{global, KeyValue};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_stdout::MetricsExporter;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
 /// Metrics available throughout the application.
 pub struct Metrics {
@@ -39,20 +36,21 @@ impl Metrics {
     }
 }
 
-/// Initialize tracing to stdout (call once at startup, non-async context).
-/// Returns a `Metrics` handle backed by the global OTel meter.
-///
-/// Note: for the full OTel metrics pipeline with async export, call
-/// `init_async()` inside a Tokio runtime instead.
-pub fn init_logging() {
-    let _ = tracing_subscriber::registry()
-        .with(
-            EnvFilter::from_default_env()
-                .add_directive("burn_recsys=info".parse().unwrap())
-                .add_directive("info".parse().unwrap()),
-        )
-        .with(tracing_subscriber::fmt::layer().compact())
-        .try_init();
+/// Initialize tracing subscriber (call once at startup).
+/// Configures logging based on `RUST_LOG` env var and a format preference.
+pub fn init_subscriber(env_filter: String, format: String) {
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(env_filter));
+
+    let subscriber = Registry::default().with(env_filter);
+
+    if format == "json" {
+        let formatter = tracing_subscriber::fmt::layer().json();
+        subscriber.with(formatter).init();
+    } else {
+        let formatter = tracing_subscriber::fmt::layer().compact();
+        subscriber.with(formatter).init();
+    };
 }
 
 /// Initialize full OTel pipeline (requires Tokio runtime).
