@@ -14,7 +14,7 @@ use burn::{
     tensor::{Int, Tensor, activation::sigmoid, backend::Backend},
 };
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 use tokio::sync::{mpsc, oneshot};
 use tracing::info;
 
@@ -46,6 +46,7 @@ pub struct AppState {
     pub tx: mpsc::Sender<InferenceJob>,
     pub num_users: usize,
     pub num_items: usize,
+    pub ready: Arc<AtomicBool>,
 }
 
 use std::time::Instant;
@@ -115,6 +116,18 @@ fn run_inference (
         .into_iter()
         .map(|(i, _)| candidates[i] )
         .collect()
+}
+
+pub async fn get_ready (
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    // if the model loaded, turn ready into true, response 200
+    // else return 503
+    if state.ready.load(Ordering::Acquire) {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
 pub async fn recommend(
@@ -194,6 +207,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     info!("Configuration: {:?}", settings);
     info!("Loading model from {}...", settings.model);
     let device: <B as Backend>::Device = Default::default();
+    let ready = Arc::new(AtomicBool::new(false));
 
     info!("Model loaded ({} users, {} items)", settings.num_users, settings.num_items);
 
@@ -232,20 +246,28 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     let state = Arc::new(AppState { 
         tx, 
         num_users: settings.num_users, 
-        num_items: settings.num_items, 
+        num_items: settings.num_items,
+        ready: ready.clone(),
     });
 
-    let app = Router::new()
+    let protected = Router::new()
         .route("/recommend", post(recommend))
+        .layer(middleware::from_fn(api_key_middleware));
+    
+    let app = Router::new()
+        .route("/ready", get(get_ready))
         .route("/health", get(health))
-        .layer(middleware::from_fn(api_key_middleware))
+        .merge(protected)
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], settings.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!("Listening on {}", addr);
+    
+    ready.store(true, Ordering::Release);
+    
     axum::serve(listener, app).await?;
-
+    
     Ok(())
 }
 
