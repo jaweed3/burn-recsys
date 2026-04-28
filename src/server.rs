@@ -83,6 +83,37 @@ pub async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     )
 }
 
+fn run_inference (
+    model: &NeuMF<B>,
+    device: &<B as Backend>::Device,
+    user_id: u32,
+    candidates: &[u32]
+    ) -> Vec<u32> {
+    let n = candidates.len();
+
+    let users = vec![user_id as i32; n];
+    let items: Vec<i32> = candidates.iter().map(|&x| x as i32).collect();
+
+    let user_t = Tensor::<B, 1, Int>::from_ints(users.as_slice(), device);
+    let item_t = Tensor::<B, 1, Int>::from_ints(items.as_slice(), device);
+
+    let scores = sigmoid(model.forward(user_t, item_t));
+    let scores_vec: Vec<f32> =
+        scores.into_data().to_vec::<f32>().unwrap_or_default();
+
+    let mut idx_scores: Vec<(usize, f32)> = 
+        scores_vec.into_iter().enumerate().collect();
+
+    idx_scores.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap()
+    });
+
+    idx_scores
+        .into_iter()
+        .map(|(i, _)| candidates[i] )
+        .collect()
+}
+
 pub async fn recommend(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RecommendRequest>,
@@ -161,19 +192,6 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     info!("Loading model from {}...", settings.model);
     let device: <B as Backend>::Device = Default::default();
 
-    let model_config = NeuMFConfig {
-        num_users: settings.num_users,
-        num_items: settings.num_items,
-        gmf_dim: settings.gmf_dim,
-        mlp_layers: settings.mlp_layers.clone(),
-        mlp_embed_dim: settings.mlp_embed_dim,
-    };
-
-    let model = model_config
-        .init::<B>(&device)
-        .load_file(&settings.model, &CompactRecorder::new(), &device)
-        .map_err(|e| anyhow::anyhow!("Failed to load {}: {e}", settings.model))?;
-
     info!("Model loaded ({} users, {} items)", settings.num_users, settings.num_items);
 
     let (tx, rx) = mpsc::channel::<InferenceJob>(1024);
@@ -183,7 +201,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
         .unwrap_or(4);
 
     for _ in 0..workers {
-        let mut model = load_model(&settings, &device);
+        let model = load_model(&settings, &device)?;
         let rx = rx.clone();
         let device = device.clone();
 
@@ -197,7 +215,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
                 let Some(job) = job else { break };
 
                 let ranked = run_inference(
-                    &mut model,
+                    &model,
                     &device,
                     job.user_id,
                     &job.candidates
@@ -246,33 +264,3 @@ fn load_model (
     Ok(model)
 }
 
-fn run_inference (
-    model: &NeuMF<B>,
-    device: &<B as Backend>::Device,
-    user_id: u32,
-    candidates: &[u32]
-    ) -> Vec<u32> {
-    let n = candidates.len();
-
-    let users = vec![user_id as i32; n];
-    let items: Vec<i32> = candidates.iter().map(|&x| x as i32).collect();
-
-    let user_t = Tensor::<B, 1, Int>::from_ints(users.as_slice(), device);
-    let item_t = Tensor::<B, 1, Int>::from_ints(items.as_slice(), device);
-
-    let scores = sigmoid(model.forward(user_t, item_t));
-    let scores_vec: Vec<f32> =
-        scores.into_data().to_vec::<f32>().unwrap_or_default();
-
-    let mut idx_scores: Vec<(usize, f32)> = 
-        scores_vec.into_iter().enumerate().collect();
-
-    idx_scores.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1).unwrap()
-    });
-
-    idx_scores
-        .into_iter()
-        .map(|(i, _)| candidates[1] )
-        .collect()
-}
