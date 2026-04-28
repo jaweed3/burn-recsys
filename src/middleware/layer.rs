@@ -14,12 +14,13 @@ pub async fn api_key_middleware (
         .get("x-api-key")
         .and_then(|value| value.to_str().ok());
 
+    let expected = match  std::env::var("API_KEY") {
+        Ok(v) => v,
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    
     match auth_header {
-        Some(key) if key == "secret-key" => {
-            Ok(next.run(req).await)
-        }
-        _ => {
-            Err(StatusCode::UNAUTHORIZED)
-        }
+        Some(key) if key == expected => Ok(next.run(req).await),
+        _ => Err(StatusCode::UNAUTHORIZED),
     }
 }
