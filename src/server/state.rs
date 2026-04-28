@@ -1,0 +1,34 @@
+use serde::Deserialize;
+use std::sync::{Arc, atomic::AtomicBool};
+use tokio::sync::{mpsc, oneshot};
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Settings {
+    pub model: String,
+    pub model_type: String,
+    pub port: u16,
+    pub num_users: usize,
+    pub num_items: usize,
+    pub gmf_dim: usize,
+    pub mlp_embed_dim: usize,
+    pub mlp_layers: Vec<usize>,
+    pub valid_api_keys: String,
+}
+
+// ── Shared state ──────────────────────────────────────────────────────────────
+
+pub struct InferenceJob {
+    pub user_id: u32,
+    pub candidates: Vec<u32>,
+    pub resp: oneshot::Sender<Vec<u32>>,
+}
+
+pub struct AppState {
+    pub tx: mpsc::Sender<InferenceJob>,
+    pub num_users: usize,
+    pub num_items: usize,
+    pub ready: Arc<AtomicBool>,
+    pub valid_api_keys: String,
+}
