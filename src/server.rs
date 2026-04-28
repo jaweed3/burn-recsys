@@ -31,6 +31,7 @@ pub struct Settings {
     pub gmf_dim: usize,
     pub mlp_embed_dim: usize,
     pub mlp_layers: Vec<usize>,
+    pub valid_api_keys: Vec<String>,
 }
 
 // ── Shared state ──────────────────────────────────────────────────────────────
