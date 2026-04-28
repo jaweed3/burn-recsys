@@ -25,6 +25,7 @@ type B = NdArray<f32>;
 #[derive(Deserialize, Debug, Clone)]
 pub struct Settings {
     pub model: String,
+    pub model_type: String,
     pub port: u16,
     pub num_users: usize,
     pub num_items: usize,
