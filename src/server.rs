@@ -7,6 +7,16 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use crate::middleware::layer::api_key_middleware;
+use crate::models::{
+    Scorable,
+    NeuMF,
+    DeepFM,
+    GMF,
+    ncf::NeuMFConfig,
+    deepfm::DeepFMConfig,
+    gmf::GMFConfig
+};
 use burn::{
     backend::NdArray,
     module::Module,
@@ -48,12 +58,12 @@ pub struct AppState {
     pub num_users: usize,
     pub num_items: usize,
     pub ready: Arc<AtomicBool>,
+    pub device: <B as Backend>::Device,
 }
 
 use std::time::Instant;
 use tracing::warn;
 
-use crate::{middleware::layer::api_key_middleware, models::{NeuMF, ncf::NeuMFConfig}};
 
 // ── DTOs & Handlers ───────────────────────────────────────────────────────────
 
@@ -272,22 +282,48 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn load_model (
+fn load_model(
     settings: &Settings,
     device: &<B as Backend>::Device,
-) -> anyhow::Result<NeuMF<B>> {
-    let config = NeuMFConfig {
-        num_users: settings.num_users,
-        num_items: settings.num_items,
-        gmf_dim: settings.gmf_dim,
-        mlp_layers: settings.mlp_layers.clone(),
-        mlp_embed_dim: settings.mlp_embed_dim,
-    };
+) -> anyhow::Result<Arc<dyn Scorable<B> + Send + Sync>>{
+    match settings.model_type.as_str() {
+        "neumf" => {
+            let config = NeuMFConfig {
+                num_users: settings.num_users,
+                num_items: settings.num_items,
+                gmf_dim: settings.gmf_dim,
+                mlp_layers: settings.mlp_layers,
+                mlp_embed_dim: settings.mlp_embed_dim,
+            };
 
-    let model = config
-        .init::<B>(device)
-        .load_file(&settings.model, &CompactRecorder::new(), device)?;
+            let model = config
+                .init::<B>(device)
+                .load_file(&settings.model, &CompactRecorder::new(), device)?;
 
-    Ok(model)
+            Ok(Arc::new(model))
+        }
+
+        "deepfm" => {
+            let config = DeepFMConfig {
+                num_users: settings.num_users,
+                num_items: settings.num_items,
+                embedding_dim: settings.gmf_dim,
+                mlp_layers: settings.mlp_layers,
+            };
+
+            let model = config
+                .init::<B>(device)
+                .load_file(&settings.model, CompactRecorder, device)>;
+
+            Ok(Arc::new(model))
+        }
+
+        "gmf" => {
+            let config = GMFConfig {
+                num_users: settings.num_users,
+                num_items: settings.num_items,
+                embedding_dim: settings.gmf_dim,
+            };
+        }
+    }
 }
-
