@@ -1,0 +1,84 @@
+pub mod handlers;
+pub mod model;
+pub mod router;
+pub mod state;
+
+use std::net::SocketAddr;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use tokio::sync::mpsc;
+use tracing::info;
+use burn::backend::NdArray;
+use burn::tensor::backend::Backend;
+
+pub use state::{Settings, AppState, InferenceJob};
+pub use handlers::{RecommendRequest, RecommendResponse, HealthResponse};
+use model::load_model;
+use handlers::run_inference;
+use router::create_router;
+
+type B = NdArray<f32>;
+
+pub async fn run(settings: Settings) -> anyhow::Result<()> {
+    info!("Configuration: {:?}", settings);
+    info!("Loading model from {}...", settings.model);
+    let device: <B as Backend>::Device = Default::default();
+    let ready = Arc::new(AtomicBool::new(false));
+    
+    // Test if base model loads correctly
+    let _base_model = load_model(&settings, &device)?;
+    info!("Model loaded ({} users, {} items)", settings.num_users, settings.num_items);
+
+    let (tx, rx) = mpsc::channel::<InferenceJob>(1024);
+    let rx = Arc::new(tokio::sync::Mutex::new(rx));
+    
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+
+    for i in 0..workers {
+        let model = load_model(&settings, &device)?;
+        let rx = rx.clone();
+        let device = device.clone();
+
+        tokio::spawn(async move {
+            info!("Inference worker {} started", i);
+            loop {
+                let job = {
+                    let mut guard = rx.lock().await;
+                    guard.recv().await
+                };
+
+                let Some(job) = job else { break };
+
+                let ranked = run_inference(
+                    model.as_ref(),
+                    &device,
+                    job.user_id,
+                    &job.candidates
+                );
+
+                let _ = job.resp.send(ranked);
+            }
+        });
+    }
+
+    let state = Arc::new(AppState {
+        tx,
+        num_users: settings.num_users, 
+        num_items: settings.num_items,
+        ready: ready.clone(),
+        valid_api_keys: settings.valid_api_keys.clone(),
+    });
+
+    let app = create_router(state);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], settings.port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    info!("Listening on {}", addr);
+    
+    ready.store(true, Ordering::Release);
+    
+    axum::serve(listener, app).await?;
+    
+    Ok(())
+}
