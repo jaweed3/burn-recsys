@@ -11,3 +11,5 @@ num_items = 7988
 gmf_dim = 64
 mlp_embed_dim = 64
 mlp_layers = [128, 64, 32, 16]
+
+valid_api_keys = "admin_bismillah"
