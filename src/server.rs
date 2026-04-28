@@ -10,9 +10,6 @@ use axum::{
 use crate::middleware::layer::api_key_middleware;
 use crate::models::{
     Scorable,
-    NeuMF,
-    DeepFM,
-    GMF,
     ncf::NeuMFConfig,
     deepfm::DeepFMConfig,
     gmf::GMFConfig
@@ -58,7 +55,6 @@ pub struct AppState {
     pub num_users: usize,
     pub num_items: usize,
     pub ready: Arc<AtomicBool>,
-    pub device: <B as Backend>::Device,
 }
 
 use std::time::Instant;
@@ -99,7 +95,7 @@ pub async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 fn run_inference (
-    model: &NeuMF<B>,
+    model: &(dyn Scorable<B> + Send),
     device: &<B as Backend>::Device,
     user_id: u32,
     candidates: &[u32]
@@ -112,7 +108,7 @@ fn run_inference (
     let user_t = Tensor::<B, 1, Int>::from_ints(users.as_slice(), device);
     let item_t = Tensor::<B, 1, Int>::from_ints(items.as_slice(), device);
 
-    let scores = sigmoid(model.forward(user_t, item_t));
+    let scores = sigmoid(model.score(user_t, item_t));
     let scores_vec: Vec<f32> =
         scores.into_data().to_vec::<f32>().unwrap_or_default();
 
@@ -243,7 +239,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
                 let Some(job) = job else { break };
 
                 let ranked = run_inference(
-                    &model,
+                    model.as_ref(),
                     &device,
                     job.user_id,
                     &job.candidates
@@ -254,8 +250,8 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
         });
     }
 
-    let state = Arc::new(AppState { 
-        tx, 
+    let state = Arc::new(AppState {
+        tx,
         num_users: settings.num_users, 
         num_items: settings.num_items,
         ready: ready.clone(),
@@ -285,14 +281,14 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
 fn load_model(
     settings: &Settings,
     device: &<B as Backend>::Device,
-) -> anyhow::Result<Arc<dyn Scorable<B> + Send + Sync>>{
+) -> anyhow::Result<Box<dyn Scorable<B> + Send>>{
     match settings.model_type.as_str() {
         "neumf" => {
             let config = NeuMFConfig {
                 num_users: settings.num_users,
                 num_items: settings.num_items,
                 gmf_dim: settings.gmf_dim,
-                mlp_layers: settings.mlp_layers,
+                mlp_layers: settings.mlp_layers.clone(),
                 mlp_embed_dim: settings.mlp_embed_dim,
             };
 
@@ -300,7 +296,7 @@ fn load_model(
                 .init::<B>(device)
                 .load_file(&settings.model, &CompactRecorder::new(), device)?;
 
-            Ok(Arc::new(model))
+            Ok(Box::new(model))
         }
 
         "deepfm" => {
@@ -308,14 +304,14 @@ fn load_model(
                 num_users: settings.num_users,
                 num_items: settings.num_items,
                 embedding_dim: settings.gmf_dim,
-                mlp_layers: settings.mlp_layers,
+                mlp_layers: settings.mlp_layers.clone(),
             };
 
             let model = config
                 .init::<B>(device)
-                .load_file(&settings.model, CompactRecorder, device)>;
+                .load_file(&settings.model, &CompactRecorder::new(), device)?;
 
-            Ok(Arc::new(model))
+            Ok(Box::new(model))
         }
 
         "gmf" => {
@@ -324,6 +320,14 @@ fn load_model(
                 num_items: settings.num_items,
                 embedding_dim: settings.gmf_dim,
             };
+
+            let model = config
+                .init::<B>(device)
+                .load_file(&settings.model, &CompactRecorder::new(), device)?;
+
+            Ok(Box::new(model))
         }
+
+        _ => anyhow::bail!("unknown model_type: {}", settings.model_type),
     }
 }

@@ -2,9 +2,9 @@
 # These values can be overridden by environment variables
 # with the `APP_` prefix, e.g., `APP_PORT=8000`.
 
-model = "checkpoints/best.mpk" # Default model path
+model = "checkpoints/epoch_005.mpk" # Default model path
 model_type = "neumf"
-port = 3000
+port = 1234
 
 # Model-specific parameters
 num_users = 10000
