@@ -1,6 +1,6 @@
 //! src/server.rs
-use crate::models::ncf::{NeuMF, NeuMFConfig};
 use axum::{
+    middleware,
     extract::State,
     http::StatusCode,
     response::IntoResponse,
@@ -31,7 +31,7 @@ pub struct Settings {
     pub gmf_dim: usize,
     pub mlp_embed_dim: usize,
     pub mlp_layers: Vec<usize>,
-    pub valid_api_keys: Vec<String>,
+    pub valid_api_keys: String,
 }
 
 // ── Shared state ──────────────────────────────────────────────────────────────
@@ -50,6 +50,8 @@ pub struct AppState {
 
 use std::time::Instant;
 use tracing::warn;
+
+use crate::{middleware::layer::api_key_middleware, models::{NeuMF, ncf::NeuMFConfig}};
 
 // ── DTOs & Handlers ───────────────────────────────────────────────────────────
 
@@ -236,6 +238,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/recommend", post(recommend))
         .route("/health", get(health))
+        .layer(middleware::from_fn(api_key_middleware))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], settings.port));
