@@ -4,7 +4,7 @@
 
 model = "checkpoints/best.mpk" # Default model path
 model_type = "neumf"
-port = 3000
+port = 3001
 
 # Model-specific parameters
 num_users = 10000

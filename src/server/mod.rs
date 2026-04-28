@@ -22,6 +22,32 @@ use crate::data::{PolarsDataset, RecsysDataset};
 
 type B = NdArray<f32>;
 
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    info!("Shutdown signal received. Starting cleaning...");
+}
+
 pub async fn run(settings: Settings) -> anyhow::Result<()> {
     info!("Configuration: {:?}", settings);
     info!("Loading dataset interactions from {} for retrieval...", settings.data_path);
@@ -97,7 +123,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     
     ready.store(true, Ordering::Release);
     
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()).await?;
     
     Ok(())
 }
