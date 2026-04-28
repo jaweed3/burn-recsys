@@ -14,23 +14,39 @@ use burn::tensor::{backend::Backend, Int, Tensor};
 /// Sigmoid is applied externally — by the loss function during training
 /// and by the serving layer during inference.
 pub trait Scorable<B: Backend> {
-    fn score(&self, users: Tensor<B, 1, Int>, items: Tensor<B, 1, Int>) -> Tensor<B, 1>;
+    fn score(
+        &self, 
+        users: Tensor<B, 1, Int>, 
+        items: Tensor<B, 1, Int>
+) -> Tensor<B, 1>;
 }
 
 impl<B: Backend> Scorable<B> for GMF<B> {
-    fn score(&self, users: Tensor<B, 1, Int>, items: Tensor<B, 1, Int>) -> Tensor<B, 1> {
+    fn score(
+        &self,
+        users: Tensor<B, 1, Int>, 
+        items: Tensor<B, 1, Int>
+) -> Tensor<B, 1> {
         self.forward(users, items)
     }
 }
 
 impl<B: Backend> Scorable<B> for NeuMF<B> {
-    fn score(&self, users: Tensor<B, 1, Int>, items: Tensor<B, 1, Int>) -> Tensor<B, 1> {
+    fn score(
+        &self,
+        users: Tensor<B, 1, Int>, 
+        items: Tensor<B, 1, Int>
+) -> Tensor<B, 1> {
         self.forward(users, items)
     }
 }
 
 impl<B: Backend> Scorable<B> for DeepFM<B> {
-    fn score(&self, users: Tensor<B, 1, Int>, items: Tensor<B, 1, Int>) -> Tensor<B, 1> {
+    fn score(
+        &self, 
+        users: Tensor<B, 1, Int>, 
+        items: Tensor<B, 1, Int>
+) -> Tensor<B, 1> {
         self.forward(users, items)
     }
 }

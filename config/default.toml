@@ -3,6 +3,7 @@
 # with the `APP_` prefix, e.g., `APP_PORT=8000`.
 
 model = "checkpoints/best.mpk" # Default model path
+model_type = "neumf"
 port = 3000
 
 # Model-specific parameters
