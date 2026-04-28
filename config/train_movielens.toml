@@ -1,0 +1,8 @@
+# Training configuration for MovieLens NCF
+data_path = "data/movielens.csv"
+epochs = 20
+batch_size = 256
+learning_rate = 0.001
+embedding_dim = 32
+neg_ratio = 4
+checkpoint_dir = "checkpoints"

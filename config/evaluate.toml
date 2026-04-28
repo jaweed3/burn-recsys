@@ -1,0 +1,4 @@
+# Configuration for model evaluation (GMF vs NeuMF)
+data_path = "data/myket.csv"
+users = 1000
+epochs = 10

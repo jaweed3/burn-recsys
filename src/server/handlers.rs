@@ -11,6 +11,7 @@ use burn::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, atomic::Ordering};
+use std::collections::HashSet;
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 use std::time::Instant;
@@ -24,17 +25,17 @@ type B = NdArray<f32>;
 #[derive(Deserialize, Serialize)]
 pub struct RecommendRequest {
     pub user_id: u32,
-    pub candidates: Vec<u32>,
+    pub candidates: Option<Vec<u32>>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct RecommendResponse {
     pub user_id: u32,
     pub ranked: Vec<u32>,
     pub latency_ms: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct HealthResponse {
     pub status: &'static str,
     pub num_users: usize,
@@ -79,29 +80,44 @@ pub async fn recommend(
         ).into_response();
     }
 
-    let candidates = if payload.candidates.is_empty() {
+    let user_id = payload.user_id;
+
+    // --- Retrieval Stage ---
+    let candidates = match payload.candidates {
+        Some(c) => {
+            if c.is_empty() {
+                return (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(serde_json::json!({
+                        "error": "candidates array provided but empty"
+                    })),
+                ).into_response();
+            }
+            if c.len() > 200 {
+                return (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    Json(serde_json::json!({
+                        "error": "candidates array is too long (max 200)"
+                    }))
+                ).into_response();
+            }
+            c
+        }
+        None => {
+            let empty_set = HashSet::new();
+            let exclude = state.user_positives.get(&user_id).unwrap_or(&empty_set);
+            state.retriever.generate(user_id, state.retrieval_limit, exclude)
+        }
+    };
+
+    if candidates.is_empty() {
         return (
-            StatusCode::UNPROCESSABLE_ENTITY,
+            StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
-                "error": format!(
-                    "array user_id {} is empty!! cannot processing entity.",
-                    payload.user_id
-                )
+                "error": "failed to generate or find candidates"
             })),
         ).into_response();
-    } else if payload.candidates.len() > 200 {
-        return (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(serde_json::json!({
-                "error": format!(
-                    "user_id {} array is too long.",
-                    payload.user_id
-                )
-            }))
-        ).into_response();
-    } else {
-        payload.candidates
-    };
+    }
 
     if let Some(&bad) = candidates.iter().find(|&&c| c as usize >= state.num_items) {
         warn!(item_id = bad, num_items = state.num_items, "candidate item_id out of range");
@@ -117,7 +133,6 @@ pub async fn recommend(
     }
 
     let t0 = Instant::now();
-    let user_id = payload.user_id;
     let (resp_tx, resp_rx) = oneshot::channel();
 
     if state.tx.send(InferenceJob {

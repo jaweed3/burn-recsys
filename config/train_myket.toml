@@ -1,0 +1,11 @@
+# Training configuration for Myket NCF
+# Can be overridden by environment variables with APP_ prefix
+# e.g. APP_EPOCHS=10 cargo run --example myket_ncf
+
+data_path = "data/myket.csv"
+epochs = 20
+batch_size = 128
+learning_rate = 0.001
+embedding_dim = 64
+neg_ratio = 4
+checkpoint_dir = "checkpoints"

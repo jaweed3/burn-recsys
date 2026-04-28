@@ -4,7 +4,7 @@ use burn::prelude::*;
 use burn::record::CompactRecorder;
 use burn_recsys::{
     models::ncf::NeuMFConfig,
-    server::{run, RecommendRequest, Settings},
+    server::{run, RecommendRequest, RecommendResponse, Settings},
     telemetry::init_subscriber,
 };
 use once_cell::sync::Lazy;
@@ -22,13 +22,18 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 
 struct TestApp {
     pub addr: SocketAddr,
-    // Keep the temp file in scope to prevent it from being deleted
+    // Keep files in scope to prevent deletion
     _model_file: NamedTempFile,
+    _data_file: NamedTempFile,
 }
 
 /// Creates a dummy model and saves it to a temporary file.
-fn create_dummy_model() -> (NamedTempFile, Settings) {
+fn create_dummy_model() -> (NamedTempFile, NamedTempFile, Settings) {
     let model_file = NamedTempFile::new().expect("Failed to create temp file");
+    
+    // Create a dummy data file for retrieval tests
+    let data_file = NamedTempFile::new().expect("Failed to create temp data file");
+    std::fs::write(data_file.path(), "user_id,app_name,timestamp\n1,app1,123456\n").unwrap();
 
     let num_users = 100;
     let num_items = 100;
@@ -37,16 +42,16 @@ fn create_dummy_model() -> (NamedTempFile, Settings) {
     
     let settings = Settings {
         model: model_file.path().to_str().unwrap().to_string(),
+        model_type: "neumf".to_string(),
         port: pick_unused_port().expect("No ports free"),
-        
         num_users,
         num_items,
         gmf_dim: 8,
         mlp_embed_dim,
         mlp_layers: mlp_layers.clone(),
-    
-        model_type: "neumf".to_string(),
         valid_api_keys: "admin_bismillah".to_string(),
+        retrieval_limit: 10,
+        data_path: data_file.path().to_str().unwrap().to_string(),
     };
 
     let model_config = NeuMFConfig {
@@ -62,14 +67,14 @@ fn create_dummy_model() -> (NamedTempFile, Settings) {
         .save_file(model_file.path(), &CompactRecorder::new())
         .expect("Failed to save dummy model");
 
-    (model_file, settings)
+    (model_file, data_file, settings)
 }
 
 // Helper to spawn the app in the background
 async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
 
-    let (model_file, settings) = create_dummy_model();
+    let (model_file, data_file, settings) = create_dummy_model();
     let addr = SocketAddr::from(([127, 0, 0, 1], settings.port));
 
     tokio::spawn(run(settings));
@@ -96,24 +101,22 @@ async fn spawn_app() -> TestApp {
 
     TestApp { 
         addr, 
-        _model_file: model_file 
+        _model_file: model_file,
+        _data_file: data_file,
     }
 }
 
 #[tokio::test]
 async fn health_check_works() {
-    // Arrange
     let app = spawn_app().await;
     let client = reqwest::Client::new();
 
-    // Act
     let response = client
         .get(&format!("http://{}/health", app.addr))
         .send()
         .await
         .expect("Failed to execute request.");
 
-    // Assert
     assert!(response.status().is_success());
     let health = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(health["status"], "ok");
@@ -121,15 +124,13 @@ async fn health_check_works() {
 
 #[tokio::test]
 async fn recommend_returns_200_for_valid_data() {
-    // Arrange
     let app = spawn_app().await;
     let client = reqwest::Client::new();
     let body = RecommendRequest {
         user_id: 1,
-        candidates: vec![1, 2, 3, 4, 5],
+        candidates: Some(vec![1, 2, 3, 4, 5]),
     };
 
-    // Act
     let response = client
         .post(&format!("http://{}/recommend", app.addr))
         .header("x-api-key", "admin_bismillah")
@@ -138,21 +139,18 @@ async fn recommend_returns_200_for_valid_data() {
         .await
         .expect("Failed to execute request.");
 
-    // Assert
     assert_eq!(response.status().as_u16(), 200);
 }
 
 #[tokio::test]
-async fn recommend_returns_422_for_invalid_data() {
-    // Arrange
+async fn recommend_works_without_candidates() {
     let app = spawn_app().await;
     let client = reqwest::Client::new();
     let body = RecommendRequest {
-        user_id: 999, // Out of bounds for the dummy model's 100 users
-        candidates: vec![1, 2, 3],
+        user_id: 1,
+        candidates: None,
     };
 
-    // Act
     let response = client
         .post(&format!("http://{}/recommend", app.addr))
         .header("x-api-key", "admin_bismillah")
@@ -161,6 +159,27 @@ async fn recommend_returns_422_for_invalid_data() {
         .await
         .expect("Failed to execute request.");
 
-    // Assert
+    assert_eq!(response.status().as_u16(), 200);
+    let res = response.json::<RecommendResponse>().await.unwrap();
+    assert!(!res.ranked.is_empty());
+}
+
+#[tokio::test]
+async fn recommend_returns_422_for_invalid_data() {
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+    let body = RecommendRequest {
+        user_id: 999, // Out of bounds
+        candidates: Some(vec![1, 2, 3]),
+    };
+
+    let response = client
+        .post(&format!("http://{}/recommend", app.addr))
+        .header("x-api-key", "admin_bismillah")
+        .json(&body)
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
     assert_eq!(response.status().as_u16(), 422);
 }

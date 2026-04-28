@@ -2,9 +2,11 @@ pub mod handlers;
 pub mod model;
 pub mod router;
 pub mod state;
+pub mod retrieval;
 
 use std::net::SocketAddr;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 use tracing::info;
 use burn::backend::NdArray;
@@ -15,11 +17,23 @@ pub use handlers::{RecommendRequest, RecommendResponse, HealthResponse};
 use model::load_model;
 use handlers::run_inference;
 use router::create_router;
+use retrieval::SimpleRetriever;
+use crate::data::{PolarsDataset, RecsysDataset};
 
 type B = NdArray<f32>;
 
 pub async fn run(settings: Settings) -> anyhow::Result<()> {
     info!("Configuration: {:?}", settings);
+    info!("Loading dataset interactions from {} for retrieval...", settings.data_path);
+    
+    // Load interactions to know what to exclude during retrieval
+    let dataset = PolarsDataset::myket(&settings.data_path)?;
+    let mut user_positives: HashMap<u32, HashSet<u32>> = HashMap::new();
+    for &(u, i) in dataset.interactions() {
+        user_positives.entry(u).or_default().insert(i);
+    }
+    info!("Loaded interactions for {} users", user_positives.len());
+
     info!("Loading model from {}...", settings.model);
     let device: <B as Backend>::Device = Default::default();
     let ready = Arc::new(AtomicBool::new(false));
@@ -62,12 +76,17 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
         });
     }
 
+    let retriever = Arc::new(SimpleRetriever::new(settings.num_items));
+
     let state = Arc::new(AppState {
         tx,
         num_users: settings.num_users, 
         num_items: settings.num_items,
         ready: ready.clone(),
         valid_api_keys: settings.valid_api_keys.clone(),
+        user_positives,
+        retriever,
+        retrieval_limit: settings.retrieval_limit,
     });
 
     let app = create_router(state);

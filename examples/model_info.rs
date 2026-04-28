@@ -1,49 +1,70 @@
-/// Print model architecture info and param counts for GMF and NeuMF.
-/// Run: cargo run --example model_info
+/// Inspect model parameters and architecture.
+///
+/// Usage:
+///   cargo run --example model_info
+///   APP_model_type=deepfm cargo run --example model_info
 use burn::backend::NdArray;
-use burn_recsys::models::{
-    gmf::GMFConfig,
-    ncf::NeuMFConfig,
-};
+use burn_recsys::server::Settings;
+use burn_recsys::models::ncf::NeuMFConfig;
+use burn_recsys::models::deepfm::DeepFMConfig;
+use burn_recsys::models::gmf::GMFConfig;
 
 type B = NdArray<f32>;
 
-fn main() {
-    // Myket dataset dimensions
-    let num_users = 10_000;
-    let num_items = 7_988;
+fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
+    // Load configuration
+    let builder = config::Config::builder()
+        .add_source(config::File::with_name("config/model_info.toml"))
+        .add_source(config::Environment::with_prefix("APP")
+            .try_parsing(true)
+            .separator("__"));
+    
+    let config_built = builder.build()?;
+    let settings: Settings = config_built.try_deserialize()?;
+
+    println!("Configuration: {:?}", settings);
     let device = Default::default();
 
-    // GMF
-    let gmf_cfg = GMFConfig { num_users, num_items, embedding_dim: 64 };
-    let gmf = gmf_cfg.init::<B>(&device);
-    let gmf_params = gmf.num_params();
+    println!("=== Model Architecture Info ===");
+    
+    match settings.model_type.as_str() {
+        "neumf" => {
+            let config = NeuMFConfig {
+                num_users: settings.num_users,
+                num_items: settings.num_items,
+                gmf_dim: settings.gmf_dim,
+                mlp_layers: settings.mlp_layers,
+                mlp_embed_dim: settings.mlp_embed_dim,
+            };
+            let model = config.init::<B>(&device);
+            println!("Model Type: NeuMF");
+            println!("Parameters: {}", model.num_params());
+        }
+        "deepfm" => {
+            let config = DeepFMConfig {
+                num_users: settings.num_users,
+                num_items: settings.num_items,
+                embedding_dim: settings.gmf_dim,
+                mlp_layers: settings.mlp_layers,
+            };
+            let model = config.init::<B>(&device);
+            println!("Model Type: DeepFM");
+            println!("Parameters: {}", model.num_params());
+        }
+        "gmf" => {
+            let config = GMFConfig {
+                num_users: settings.num_users,
+                num_items: settings.num_items,
+                embedding_dim: settings.gmf_dim,
+            };
+            let model = config.init::<B>(&device);
+            println!("Model Type: GMF");
+            println!("Parameters: {}", model.num_params());
+        }
+        _ => println!("Unknown model_type: {}", settings.model_type),
+    }
 
-    // NeuMF
-    let ncf_cfg = NeuMFConfig {
-        num_users,
-        num_items,
-        gmf_dim: 64,
-        mlp_layers: vec![128, 64, 32, 16],
-        mlp_embed_dim: 64,
-    };
-    let ncf = ncf_cfg.init::<B>(&device);
-    let ncf_params = ncf.num_params();
-
-    println!("=== Model Architecture ===");
-    println!();
-    println!("Dataset  : Myket ({num_users} users, {num_items} items)");
-    println!();
-    println!("GMF");
-    println!("  user emb   : {num_users} × 64");
-    println!("  item emb   : {num_items} × 64");
-    println!("  output     : 64 → 1");
-    println!("  params     : {gmf_params:>10}");
-    println!();
-    println!("NeuMF (GMF path + MLP path)");
-    println!("  GMF user/item emb : {num_users} × 64  |  {num_items} × 64");
-    println!("  MLP user/item emb : {num_users} × 64  |  {num_items} × 64");
-    println!("  MLP layers        : 128→64→32→16");
-    println!("  output            : (64+16) → 1");
-    println!("  params            : {ncf_params:>10}");
+    Ok(())
 }

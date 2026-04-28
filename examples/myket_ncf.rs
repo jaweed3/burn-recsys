@@ -2,43 +2,35 @@
 ///
 /// Usage:
 ///   cargo run --release --example myket_ncf
-///   cargo run --release --example myket_ncf -- --data data/myket.csv --epochs 5
+///   APP_EPOCHS=5 cargo run --release --example myket_ncf
 use burn::backend::{Autodiff, NdArray};
 use burn_recsys::{
     data::{PolarsDataset, RecsysDataset},
     models::ncf::NeuMFConfig,
-    trainer::{TrainConfig, Trainer},
+    trainer::{TrainConfig, Trainer, TrainerSettings},
 };
-use clap::Parser;
 
 type B = Autodiff<NdArray<f32>>;
 
-#[derive(Parser, Debug)]
-#[command(about = "Train NeuMF on Myket dataset")]
-struct Args {
-    /// Path to the Myket CSV file (columns: user_id, app_name, timestamp)
-    #[arg(long, default_value = "data/myket.csv")]
-    data: String,
-
-    /// Number of training epochs
-    #[arg(long, default_value_t = 20)]
-    epochs: usize,
-
-    /// Embedding dimension
-    #[arg(long, default_value_t = 64)]
-    embed_dim: usize,
-
-    /// Checkpoint directory (set to empty string to disable)
-    #[arg(long, default_value = "checkpoints")]
-    checkpoint_dir: String,
-}
-
 fn main() -> anyhow::Result<()> {
     env_logger::init();
-    let args = Args::parse();
 
-    println!("Loading Myket dataset from: {}", args.data);
-    let dataset = PolarsDataset::myket(&args.data)?;
+    // Load configuration
+    let builder = config::Config::builder()
+        .add_source(config::File::with_name("config/train_myket.toml"))
+        .add_source(config::Environment::with_prefix("APP")
+            .try_parsing(true)
+            .separator("__"));
+    
+    let config_built = builder.build()?;
+    // Manually handle common overrides if needed or use a more flexible deserializer
+    // For now, let's ensure we can use uppercase ENV VARS by re-mapping
+    let settings: TrainerSettings = config_built.try_deserialize()?;
+
+    println!("Configuration: {:?}", settings);
+    println!("Loading Myket dataset from: {}", settings.data_path);
+    
+    let dataset = PolarsDataset::myket(&settings.data_path)?;
     println!(
         "Loaded: {} users, {} items, {} interactions",
         dataset.num_users(), dataset.num_items(), dataset.interactions().len()
@@ -50,15 +42,14 @@ fn main() -> anyhow::Result<()> {
         train_ds.interactions().len(), val_interactions.len()
     );
 
-    let checkpoint_dir = if args.checkpoint_dir.is_empty() {
-        None
-    } else {
-        Some(std::path::PathBuf::from(&args.checkpoint_dir))
-    };
+    let checkpoint_dir = settings.checkpoint_dir.as_ref().map(std::path::PathBuf::from);
 
     let config = TrainConfig {
-        num_epochs: args.epochs,
-        embedding_dim: args.embed_dim,
+        num_epochs: settings.epochs,
+        batch_size: settings.batch_size,
+        learning_rate: settings.learning_rate,
+        embedding_dim: settings.embedding_dim,
+        neg_ratio: settings.neg_ratio,
         checkpoint_dir,
         ..Default::default()
     };
@@ -67,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         num_users: dataset.num_users(),
         num_items: dataset.num_items(),
         gmf_dim: config.embedding_dim,
-        mlp_layers: config.mlp_layers.clone(),
+        mlp_layers: settings.mlp_layers(),
         mlp_embed_dim: config.embedding_dim,
     };
 
@@ -78,6 +69,6 @@ fn main() -> anyhow::Result<()> {
     let trainer = Trainer::<B>::new(config, device);
     let _trained = trainer.train(model, &train_ds, &val_interactions);
 
-    println!("\nDone. Best checkpoint saved to {}/best", args.checkpoint_dir);
+    println!("\nDone. Training session completed.");
     Ok(())
 }

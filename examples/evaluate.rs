@@ -2,7 +2,7 @@
 ///
 /// Usage:
 ///   cargo run --release --example evaluate
-///   cargo run --release --example evaluate -- --users 500 --epochs 10
+///   APP_epochs=5 cargo run --release --example evaluate
 use burn::backend::{Autodiff, NdArray};
 use burn::module::AutodiffModule;
 use burn::tensor::activation::sigmoid;
@@ -12,32 +12,34 @@ use burn_recsys::{
     models::{gmf::GMFConfig, ncf::NeuMFConfig, Scorable},
     trainer::{TrainConfig, Trainer},
 };
-use clap::Parser;
+use serde::Deserialize;
 
 type BInner = NdArray<f32>;
 type B = Autodiff<BInner>;
 
-#[derive(Parser, Debug)]
-#[command(about = "Compare GMF vs NeuMF with leave-one-out HR@10 and NDCG@10")]
-struct Args {
-    /// Path to the Myket CSV file
-    #[arg(long, default_value = "data/myket.csv")]
-    data: String,
-
-    /// Max users to evaluate (for speed)
-    #[arg(long, default_value_t = 1000)]
+#[derive(Deserialize, Debug)]
+struct EvalSettings {
+    data_path: String,
     users: usize,
-
-    /// Number of training epochs
-    #[arg(long, default_value_t = 10)]
     epochs: usize,
 }
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
-    let args = Args::parse();
 
-    let dataset = PolarsDataset::myket(&args.data)?;
+    // Load configuration
+    let builder = config::Config::builder()
+        .add_source(config::File::with_name("config/evaluate.toml"))
+        .add_source(config::Environment::with_prefix("APP")
+            .try_parsing(true)
+            .separator("__"));
+    
+    let config_built = builder.build()?;
+    let settings: EvalSettings = config_built.try_deserialize()?;
+
+    println!("Configuration: {:?}", settings);
+
+    let dataset = PolarsDataset::myket(&settings.data_path)?;
     let (train_ds, val_interactions) = dataset.leave_one_out();
     println!(
         "Dataset: {} users | {} items | train={} | val={}",
@@ -46,17 +48,17 @@ fn main() -> anyhow::Result<()> {
     );
 
     let config = TrainConfig {
-        num_epochs: args.epochs,
+        num_epochs: settings.epochs,
         checkpoint_dir: None, // skip saving during eval comparison
         ..Default::default()
     };
     let device: <B as burn::tensor::backend::Backend>::Device = Default::default();
     let eval_device: <BInner as burn::tensor::backend::Backend>::Device = Default::default();
     let k = 10;
-    let max_users = args.users;
+    let max_users = settings.users;
 
     // ── GMF ──────────────────────────────────────────────────────────────────
-    println!("\n[GMF] Training {} epochs...", args.epochs);
+    println!("\n[GMF] Training {} epochs...", settings.epochs);
     let gmf_cfg = GMFConfig {
         num_users: dataset.num_users(),
         num_items: dataset.num_items(),
@@ -78,7 +80,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     // ── NeuMF ─────────────────────────────────────────────────────────────────
-    println!("\n[NeuMF] Training {} epochs...", args.epochs);
+    println!("\n[NeuMF] Training {} epochs...", settings.epochs);
     let ncf_cfg = NeuMFConfig {
         num_users: dataset.num_users(),
         num_items: dataset.num_items(),

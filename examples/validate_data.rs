@@ -1,24 +1,33 @@
 /// Smoke-test the data pipeline against the actual Myket CSV.
-/// Run: cargo run --example validate_data
-/// Run: cargo run --example validate_data -- --data data/myket.csv
+///
+/// Usage:
+///   cargo run --example validate_data
+///   APP_data_path=data/movielens.csv cargo run --example validate_data
 use burn_recsys::data::{NegativeSampler, PolarsDataset, RecsysDataset};
-use clap::Parser;
+use serde::Deserialize;
 use rand::SeedableRng;
 
-#[derive(Parser, Debug)]
-#[command(about = "Validate the data pipeline against a CSV file")]
-struct Args {
-    /// Path to the dataset CSV (Myket format: user_id, app_name, timestamp)
-    #[arg(long, default_value = "data/myket.csv")]
-    data: String,
+#[derive(Deserialize, Debug)]
+struct DataSettings {
+    data_path: String,
 }
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
-    let args = Args::parse();
 
-    println!("Loading {}...", args.data);
-    let ds = PolarsDataset::myket(&args.data)?;
+    // Load configuration
+    let builder = config::Config::builder()
+        .add_source(config::File::with_name("config/validate_data.toml"))
+        .add_source(config::Environment::with_prefix("APP")
+            .try_parsing(true)
+            .separator("__"));
+    
+    let config_built = builder.build()?;
+    let settings: DataSettings = config_built.try_deserialize()?;
+
+    println!("Configuration: {:?}", settings);
+    println!("Loading {}...", settings.data_path);
+    let ds = PolarsDataset::myket(&settings.data_path)?;
 
     println!("num_users   : {}", ds.num_users());
     println!("num_items   : {}", ds.num_items());

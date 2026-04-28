@@ -1,0 +1,7 @@
+# Configuration for model info
+model_path = "checkpoints/best.mpk"
+num_users = 10000
+num_items = 7988
+gmf_dim = 64
+mlp_layers = [128, 64, 32, 16]
+mlp_embed_dim = 64

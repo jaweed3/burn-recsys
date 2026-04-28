@@ -1,28 +1,25 @@
-# Stage 1: Build the application
-# We use cargo-chef to cache dependencies and speed up builds
+# Stage 1: Install cargo-chef
 FROM rust:1-slim as chef
 WORKDIR /app
 RUN cargo install cargo-chef
+
+# Stage 2: Prepare the recipe
+FROM chef as planner
 COPY . .
-# Create a recipe for the dependencies
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM chef as planner
-COPY --from=chef /app/recipe.json recipe.json
-# Build the dependencies
+# Stage 3: Build (cook) the dependencies
+FROM chef as builder
+COPY --from=planner /app/recipe.json recipe.json
+# This stage will be cached unless Cargo.toml or Cargo.lock changes
 RUN cargo chef cook --release --recipe-path recipe.json
 
-# --- Builder Stage ---
-FROM rust:1-slim as builder
-WORKDIR /app
-# Copy the pre-built dependencies
-COPY --from=planner /app/target/release/deps /app/target/release/deps
-COPY src ./src
-COPY Cargo.toml Cargo.lock ./
-# Build the application
+# Stage 4: Build the actual application
+# We use the same builder stage but now copy the source
+COPY . .
 RUN cargo build --release --bin server
 
-# Stage 2: Create the final, small image
+# Stage 5: Create the final minimal image
 FROM debian:12-slim as runner
 WORKDIR /app
 
@@ -34,15 +31,13 @@ USER appuser
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/target/release/server .
 
-# Copy the model checkpoints
-# Ensure the user has permissions to read these files
+# Copy assets and configuration
 USER root
 COPY --chown=appuser:appuser checkpoints ./checkpoints
+COPY --chown=appuser:appuser config ./config
 USER appuser
 
-# Expose the port the app runs on
+# Expose port
 EXPOSE 3000
 
-# Set the entrypoint to run the server
-# The arguments will be passed via `docker run`
 ENTRYPOINT ["./server"]

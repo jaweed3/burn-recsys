@@ -1,0 +1,15 @@
+embedding_dim = 64
+mlp_layers = [
+    128,
+    64,
+    32,
+    16,
+]
+learning_rate = 0.001
+batch_size = 128
+num_epochs = 20
+neg_ratio = 4
+patience = 3
+eval_k = 10
+val_samples = 300
+checkpoint_dir = "checkpoints"

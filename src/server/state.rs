@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use std::sync::{Arc, atomic::AtomicBool};
+use std::collections::{HashMap, HashSet};
 use tokio::sync::{mpsc, oneshot};
+use super::retrieval::CandidateGenerator;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +17,8 @@ pub struct Settings {
     pub mlp_embed_dim: usize,
     pub mlp_layers: Vec<usize>,
     pub valid_api_keys: String,
+    pub retrieval_limit: usize,
+    pub data_path: String,
 }
 
 // ── Shared state ──────────────────────────────────────────────────────────────
@@ -31,4 +35,7 @@ pub struct AppState {
     pub num_items: usize,
     pub ready: Arc<AtomicBool>,
     pub valid_api_keys: String,
+    pub user_positives: HashMap<u32, HashSet<u32>>,
+    pub retriever: Arc<dyn CandidateGenerator>,
+    pub retrieval_limit: usize,
 }
