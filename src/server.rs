@@ -11,11 +11,11 @@ use burn::{
     backend::NdArray,
     module::Module,
     record::CompactRecorder,
-    tensor::{activation::sigmoid, backend::Backend, Int, Tensor},
+    tensor::{Int, Tensor, activation::sigmoid, backend::Backend},
 };
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, oneshot};
 use tracing::info;
 
 type B = NdArray<f32>;
@@ -35,18 +35,20 @@ pub struct Settings {
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 
+pub struct InferenceJob {
+    pub user_id: u32,
+    pub candidates: Vec<u32>,
+    pub resp: oneshot::Sender<Vec<u32>>,
+}
+
 pub struct AppState {
-    /// Tokio Mutex: NeuMF's Param<Tensor> is not Sync.
-    model: Mutex<NeuMF<B>>,
-    device: <B as Backend>::Device,
-    num_users: usize,
-    num_items: usize,
+    pub tx: mpsc::Sender<InferenceJob>,
+    pub num_users: usize,
+    pub num_items: usize,
 }
 
 use std::time::Instant;
 use tracing::warn;
-
-// ... other code ...
 
 // ── DTOs & Handlers ───────────────────────────────────────────────────────────
 
@@ -137,24 +139,15 @@ pub async fn recommend(
 
     let t0 = Instant::now();
     let user_id = payload.user_id;
-    let n = candidates.len();
+    let (resp_tx, resp_rx) = oneshot::channel();
 
-    let users: Vec<i32> = vec![user_id as i32; n];
-    let items: Vec<i32> = candidates.iter().map(|&x| x as i32).collect();
+    state.tx.send(InferenceJob {
+        user_id,
+        candidates: candidates.clone(),
+        resp: resp_tx,
+    }).await.unwrap();
 
-    // Lock model → run inference → release
-    let ranked = {
-        let model = state.model.lock().await;
-        let user_t = Tensor::<B, 1, Int>::from_ints(users.as_slice(), &state.device);
-        let item_t = Tensor::<B, 1, Int>::from_ints(items.as_slice(), &state.device);
-
-        let scores = sigmoid(model.forward(user_t, item_t));
-        let scores_vec: Vec<f32> = scores.into_data().to_vec::<f32>().unwrap_or_default();
-
-        let mut idx_scores: Vec<(usize, f32)> = scores_vec.into_iter().enumerate().collect();
-        idx_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        idx_scores.into_iter().map(|(i, _)| candidates[i]).collect::<Vec<u32>>()
-    };
+    let ranked = resp_rx.await.unwrap();
 
     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
     info!(n = ranked.len(), latency_ms, "recommend ok");
@@ -183,11 +176,42 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
 
     info!("Model loaded ({} users, {} items)", settings.num_users, settings.num_items);
 
-    let state = Arc::new(AppState {
-        model: Mutex::new(model),
-        device,
-        num_users: settings.num_users,
-        num_items: settings.num_items,
+    let (tx, rx) = mpsc::channel::<InferenceJob>(1024);
+    let rx = Arc::new(tokio::sync::Mutex::new(rx));
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+
+    for _ in 0..workers {
+        let mut model = load_model(&settings, &device);
+        let rx = rx.clone();
+        let device = device.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let job = {
+                    let mut guard = rx.lock().await;
+                    guard.recv().await
+                };
+
+                let Some(job) = job else { break };
+
+                let ranked = run_inference(
+                    &mut model,
+                    &device,
+                    job.user_id,
+                    &job.candidates
+                );
+
+                let _ = job.resp.send(ranked);
+            }
+        });
+    }
+
+    let state = Arc::new(AppState { 
+        tx, 
+        num_users: settings.num_users, 
+        num_items: settings.num_items, 
     });
 
     let app = Router::new()
@@ -201,4 +225,54 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+fn load_model (
+    settings: &Settings,
+    device: &<B as Backend>::Device,
+) -> anyhow::Result<NeuMF<B>> {
+    let config = NeuMFConfig {
+        num_users: settings.num_users,
+        num_items: settings.num_items,
+        gmf_dim: settings.gmf_dim,
+        mlp_layers: settings.mlp_layers.clone(),
+        mlp_embed_dim: settings.mlp_embed_dim,
+    };
+
+    let model = config
+        .init::<B>(device)
+        .load_file(&settings.model, &CompactRecorder::new(), device)?;
+
+    Ok(model)
+}
+
+fn run_inference (
+    model: &NeuMF<B>,
+    device: &<B as Backend>::Device,
+    user_id: u32,
+    candidates: &[u32]
+    ) -> Vec<u32> {
+    let n = candidates.len();
+
+    let users = vec![user_id as i32; n];
+    let items: Vec<i32> = candidates.iter().map(|&x| x as i32).collect();
+
+    let user_t = Tensor::<B, 1, Int>::from_ints(users.as_slice(), device);
+    let item_t = Tensor::<B, 1, Int>::from_ints(items.as_slice(), device);
+
+    let scores = sigmoid(model.forward(user_t, item_t));
+    let scores_vec: Vec<f32> =
+        scores.into_data().to_vec::<f32>().unwrap_or_default();
+
+    let mut idx_scores: Vec<(usize, f32)> = 
+        scores_vec.into_iter().enumerate().collect();
+
+    idx_scores.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap()
+    });
+
+    idx_scores
+        .into_iter()
+        .map(|(i, _)| candidates[1] )
+        .collect()
 }
