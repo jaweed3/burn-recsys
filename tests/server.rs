@@ -10,6 +10,7 @@ use burn_recsys::{
 use once_cell::sync::Lazy;
 use portpicker::pick_unused_port;
 use std::net::SocketAddr;
+use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
@@ -28,18 +29,24 @@ struct TestApp {
 /// Creates a dummy model and saves it to a temporary file.
 fn create_dummy_model() -> (NamedTempFile, Settings) {
     let model_file = NamedTempFile::new().expect("Failed to create temp file");
+
     let num_users = 100;
     let num_items = 100;
     let mlp_layers = vec![16, 8];
     let mlp_embed_dim = 8;
+    
     let settings = Settings {
         model: model_file.path().to_str().unwrap().to_string(),
         port: pick_unused_port().expect("No ports free"),
+        
         num_users,
         num_items,
         gmf_dim: 8,
         mlp_embed_dim,
         mlp_layers: mlp_layers.clone(),
+    
+        model_type: "neumf".to_string(),
+        valid_api_keys: "admin_bismillah".to_string(),
     };
 
     let model_config = NeuMFConfig {
@@ -65,13 +72,32 @@ async fn spawn_app() -> TestApp {
     let (model_file, settings) = create_dummy_model();
     let addr = SocketAddr::from(([127, 0, 0, 1], settings.port));
 
-    let server = run(settings);
-    tokio::spawn(server);
+    tokio::spawn(run(settings));
 
-    // Give the server a moment to start
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let client = reqwest::Client::new(); 
+    let deadline = Instant::now() + Duration::from_secs(5);
 
-    TestApp { addr, _model_file: model_file }
+    loop {
+        if Instant::now() > deadline {
+            panic!("server failed to start within timeout!");
+        }
+
+        match client
+            .get(format!("http://{}/health", addr))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => break,
+            _ => {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
+
+    TestApp { 
+        addr, 
+        _model_file: model_file 
+    }
 }
 
 #[tokio::test]
@@ -106,6 +132,7 @@ async fn recommend_returns_200_for_valid_data() {
     // Act
     let response = client
         .post(&format!("http://{}/recommend", app.addr))
+        .header("x-api-key", "admin_bismillah")
         .json(&body)
         .send()
         .await
@@ -128,6 +155,7 @@ async fn recommend_returns_422_for_invalid_data() {
     // Act
     let response = client
         .post(&format!("http://{}/recommend", app.addr))
+        .header("x-api-key", "admin_bismillah")
         .json(&body)
         .send()
         .await

@@ -55,6 +55,7 @@ pub struct AppState {
     pub num_users: usize,
     pub num_items: usize,
     pub ready: Arc<AtomicBool>,
+    pub valid_api_keys: String,
 }
 
 use std::time::Instant;
@@ -195,13 +196,30 @@ pub async fn recommend(
     let user_id = payload.user_id;
     let (resp_tx, resp_rx) = oneshot::channel();
 
-    state.tx.send(InferenceJob {
+    if state.tx.send(InferenceJob {
         user_id,
         candidates: candidates.clone(),
         resp: resp_tx,
-    }).await.unwrap();
+    }).await.is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": "inference queue unavailable"
+            })),
+        ).into_response();
+    }
 
-    let ranked = resp_rx.await.unwrap();
+    let ranked = match resp_rx.await {
+        Ok(v) => v,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "worker failed to return inference result."
+                })),
+            ).into_response();
+        }
+    };
 
     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
     info!(n = ranked.len(), latency_ms, "recommend ok");
@@ -215,11 +233,13 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     info!("Loading model from {}...", settings.model);
     let device: <B as Backend>::Device = Default::default();
     let ready = Arc::new(AtomicBool::new(false));
-
+    
+    let base_model = load_model(&settings, &device)?;
     info!("Model loaded ({} users, {} items)", settings.num_users, settings.num_items);
 
     let (tx, rx) = mpsc::channel::<InferenceJob>(1024);
     let rx = Arc::new(tokio::sync::Mutex::new(rx));
+    
     let workers = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
@@ -255,11 +275,12 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
         num_users: settings.num_users, 
         num_items: settings.num_items,
         ready: ready.clone(),
+        valid_api_keys: settings.valid_api_keys.clone(),
     });
 
     let protected = Router::new()
         .route("/recommend", post(recommend))
-        .layer(middleware::from_fn(api_key_middleware));
+        .layer(middleware::from_fn_with_state(state.clone(), api_key_middleware));
     
     let app = Router::new()
         .route("/ready", get(get_ready))
