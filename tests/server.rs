@@ -39,6 +39,7 @@ fn create_dummy_model() -> (NamedTempFile, NamedTempFile, Settings) {
     let num_items = 100;
     let mlp_layers = vec![16, 8];
     let mlp_embed_dim = 8;
+    let max_candidates = 200;
     
     let settings = Settings {
         model: model_file.path().to_str().unwrap().to_string(),
@@ -52,6 +53,7 @@ fn create_dummy_model() -> (NamedTempFile, NamedTempFile, Settings) {
         valid_api_keys: "admin_bismillah".to_string(),
         retrieval_limit: 10,
         data_path: data_file.path().to_str().unwrap().to_string(),
+        max_candidates: max_candidates.clone(),
     };
 
     let model_config = NeuMFConfig {
@@ -182,4 +184,25 @@ async fn recommend_returns_422_for_invalid_data() {
         .expect("Failed to execute request.");
 
     assert_eq!(response.status().as_u16(), 422);
+}
+
+#[tokio::test]
+async fn recommend_fails_id_candidated_too_long() {
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+
+    let body = RecommendRequest {
+        user_id: 1,
+        candidates: Some((0..201).collect()),
+    };
+
+    let response = client
+        .post(&format!("http://{}/recommend", app.addr))
+        .header("x-api-key", "admin_bismillah")
+        .json(&body)
+        .send()
+        .await
+        .expect("failed to execute response.");
+
+    assert_eq!(response.status().as_u16(), 413);
 }

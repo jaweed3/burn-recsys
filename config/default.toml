@@ -19,3 +19,4 @@ valid_api_keys = "admin_bismillah"
 # Retrieval
 retrieval_limit = 100
 data_path = "data/myket.csv"
+max_candidates = 200

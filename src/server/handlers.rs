@@ -93,9 +93,9 @@ pub async fn recommend(
                     })),
                 ).into_response();
             }
-            if c.len() > 200 {
+            else if c.len() > state.max_candidates {
                 return (
-                    StatusCode::TOO_MANY_REQUESTS,
+                    StatusCode::PAYLOAD_TOO_LARGE,
                     Json(serde_json::json!({
                         "error": "candidates array is too long (max 200)"
                     }))
@@ -108,6 +108,8 @@ pub async fn recommend(
             let exclude = state.user_positives.get(&user_id).unwrap_or(&empty_set);
             state.retriever.generate(user_id, state.retrieval_limit, exclude)
         }
+
+
     };
 
     if candidates.is_empty() {

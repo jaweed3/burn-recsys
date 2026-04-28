@@ -113,6 +113,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
         user_positives,
         retriever,
         retrieval_limit: settings.retrieval_limit,
+        max_candidates: settings.max_candidates,
     });
 
     let app = create_router(state);

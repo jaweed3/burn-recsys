@@ -19,6 +19,7 @@ pub struct Settings {
     pub valid_api_keys: String,
     pub retrieval_limit: usize,
     pub data_path: String,
+    pub max_candidates: usize,
 }
 
 // ── Shared state ──────────────────────────────────────────────────────────────
@@ -38,4 +39,5 @@ pub struct AppState {
     pub user_positives: HashMap<u32, HashSet<u32>>,
     pub retriever: Arc<dyn CandidateGenerator>,
     pub retrieval_limit: usize,
+    pub max_candidates: usize,
 }
