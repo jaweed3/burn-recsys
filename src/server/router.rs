@@ -18,7 +18,7 @@ use super::handlers::{self, health, get_ready, recommend};
         handlers::recommend,
     ),
     components(
-        schemas(handlers::HealthResponse, handlers::RecommendRequest, handlers::RecommendResponse)
+        schemas(handlers::HealthResponse, handlers::ReadyResponse, handlers::RecommendRequest, handlers::RecommendResponse)
     ),
     tags(
         (name = "Recommendation API", description = "endpoints for serving ML models")
