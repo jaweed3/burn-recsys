@@ -1,8 +1,10 @@
 use burn::{
     module::Module,
     nn::{Embedding, EmbeddingConfig, Linear, LinearConfig, Relu},
-    tensor::{backend::Backend, Int, Tensor},
+    tensor::{Int, Tensor, backend::Backend},
 };
+
+use crate::models::Retrievable;
 
 /// Neural Matrix Factorization (NeuMF) — combines GMF path and MLP path.
 #[derive(Module, Debug)]
@@ -114,6 +116,35 @@ impl<B: Backend> NeuMF<B> {
         let out = out_w[0] * out_w[1] + out_b;
 
         emb + mlp + out
+    }
+}
+
+impl <B: Backend> Retrievable<B> for NeuMF<B> {
+    fn item_embeddings(&self) -> Vec<Vec<f32>> {
+        let tensor = self.gmf_item_emb.weight.val();
+
+        let shape = tensor.shape();
+        let _num_items = shape.dims[0];
+        let dim = shape.dims[1];
+
+        let flat_data: Vec<f32> = tensor.into_data().to_vec().unwrap();
+
+        flat_data
+            .chunks_exact(dim)
+            .map(|chunk| chunk.to_vec())
+            .collect()
+    }
+
+    fn user_embedding(&self, user_id: u32) -> Vec<f32> {
+        let weights = self.gmf_user_emb.weight.val();
+
+        let start = user_id as usize;
+        let user_tensor = weights.slice([start..start + 1]);
+
+        user_tensor
+            .into_data()
+            .to_vec::<f32>()
+            .expect("Failed to export user embedding.")
     }
 }
 
