@@ -7,7 +7,7 @@ pub mod retrieval;
 use std::net::SocketAddr;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::collections::{HashMap, HashSet};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::info;
 use burn::backend::NdArray;
 use burn::tensor::backend::Backend;
@@ -17,7 +17,7 @@ pub use handlers::{RecommendRequest, RecommendResponse, HealthResponse};
 use model::load_model;
 use handlers::run_inference;
 use router::create_router;
-use retrieval::SimpleRetriever;
+use retrieval::{VectorRetriever, CandidateGenerator};
 use crate::data::{PolarsDataset, RecsysDataset};
 
 type B = NdArray<f32>;
@@ -64,21 +64,28 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
     let device: <B as Backend>::Device = Default::default();
     let ready = Arc::new(AtomicBool::new(false));
     
-    // Test if base model loads correctly
-    let _base_model = load_model(&settings, &device)?;
-    info!("Model loaded ({} users, {} items)", settings.num_users, settings.num_items);
+    // Load model initially to get embeddings
+    let base_model = load_model(&settings, &device)?;
+    let item_vectors = base_model.item_embeddings();
+    info!("Model loaded and embeddings extracted ({} users, {} items)", settings.num_users, settings.num_items);
 
     let (tx, rx) = mpsc::channel::<InferenceJob>(1024);
-    let rx = Arc::new(tokio::sync::Mutex::new(rx));
+    let rx = Arc::new(Mutex::new(rx));
     
     let workers = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
 
+    let retriever = Arc::new(VectorRetriever::new(item_vectors));
+    let user_positives_shared = Arc::new(user_positives);
+
     for i in 0..workers {
-        let model = load_model(&settings, &device)?;
+        let model = Arc::new(Mutex::new(load_model(&settings, &device)?));
         let rx = rx.clone();
         let device = device.clone();
+        let retriever = retriever.clone();
+        let user_positives = user_positives_shared.clone();
+        let limit = settings.retrieval_limit;
 
         tokio::spawn(async move {
             info!("Inference worker {} started", i);
@@ -90,19 +97,35 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
 
                 let Some(job) = job else { break };
 
-                let ranked = run_inference(
-                    model.as_ref(),
-                    &device,
-                    job.user_id,
-                    &job.candidates
-                );
+                let model_guard = model.lock().await;
+
+                // --- Stage 1: Retrieval ---
+                let candidates = match job.candidates {
+                    Some(c) => c,
+                    None => {
+                        let user_vec = model_guard.user_embedding(job.user_id);
+                        let empty_set = HashSet::new();
+                        let exclude = user_positives.get(&job.user_id).unwrap_or(&empty_set);
+                        retriever.generate(job.user_id, Some(user_vec), limit, exclude)
+                    }
+                };
+
+                // --- Stage 2: Ranking ---
+                let ranked = if candidates.is_empty() {
+                    vec![]
+                } else {
+                    run_inference(
+                        model_guard.as_ref(),
+                        &device,
+                        job.user_id,
+                        &candidates
+                    )
+                };
 
                 let _ = job.resp.send(ranked);
             }
         });
     }
-
-    let retriever = Arc::new(SimpleRetriever::new(settings.num_items));
 
     let state = Arc::new(AppState {
         tx,
@@ -110,7 +133,7 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
         num_items: settings.num_items,
         ready: ready.clone(),
         valid_api_keys: settings.valid_api_keys.clone(),
-        user_positives,
+        user_positives: (*user_positives_shared).clone(), // Still used for metadata in handlers maybe?
         retriever,
         retrieval_limit: settings.retrieval_limit,
         max_candidates: settings.max_candidates,
