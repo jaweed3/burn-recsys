@@ -940,31 +940,44 @@ burn-recsys/
 │   ├── data/
 │   │   ├── mod.rs              ← module index
 │   │   ├── dataset.rs          ← RecsysDataset trait (the interface)
-│   │   ├── polars_loader.rs    ← PolarsDataset (the implementation)
+│   │   ├── polars_loader.rs    ← PolarsDataset (Polars-backed CSV + temporal split)
 │   │   └── sampler.rs          ← NegativeSampler
 │   ├── models/
-│   │   ├── mod.rs              ← Scorable trait + implementations
+│   │   ├── mod.rs              ← Scorable + Retrievable traits + blanket impls
 │   │   ├── gmf.rs              ← GMF model
 │   │   ├── ncf.rs              ← NeuMF model
 │   │   └── deepfm.rs           ← DeepFM model
 │   ├── metrics/
 │   │   ├── mod.rs
-│   │   ├── eval.rs             ← evaluate() — leave-one-out protocol
+│   │   ├── eval.rs             ← evaluate() — temporal leave-one-out protocol
 │   │   ├── hit_rate.rs         ← HR@k metric
 │   │   └── ndcg.rs             ← NDCG@k metric
 │   ├── trainer/
-│   │   └── train.rs            ← Trainer, TrainConfig
-│   ├── telemetry.rs            ← OpenTelemetry metrics setup
+│   │   ├── config.rs           ← TrainerSettings (TOML-driven)
+│   │   └── train.rs            ← Generic Trainer, TrainConfig, experiment log
+│   ├── server/
+│   │   ├── mod.rs              ← run() — worker pool, HNSW, two-stage pipeline
+│   │   ├── handlers.rs         ← /health, /ready, /recommend + run_inference()
+│   │   ├── router.rs           ← Axum router + Swagger UI
+│   │   ├── state.rs            ← AppState, Settings, InferenceJob
+│   │   ├── model.rs            ← load_model() for neumf/deepfm/gmf
+│   │   └── retrieval.rs        ← VectorRetriever (HNSW) + CandidateGenerator trait
+│   ├── middleware/
+│   │   ├── mod.rs
+│   │   └── layer.rs            ← API key auth middleware (x-api-key header)
+│   ├── telemetry.rs            ← OpenTelemetry metrics + tracing
 │   └── bin/
-│       └── server.rs           ← Axum HTTP serving
+│       └── server.rs           ← Entrypoint: init OTel, load config, run server
 ├── examples/
 │   ├── myket_ncf.rs            ← train NeuMF on Myket data
 │   ├── movielens_ncf.rs        ← train NeuMF on MovieLens data
 │   ├── evaluate.rs             ← compare GMF vs NeuMF
 │   ├── validate_data.rs        ← sanity-check data pipeline
-│   └── model_info.rs           ← print param counts
+│   └── model_info.rs           ← print param counts for any model
 ├── tests/
-│   └── integration.rs          ← end-to-end train→save→load→eval test
+│   ├── integration.rs          ← end-to-end train→save→load→eval test
+│   └── server.rs               ← HTTP integration tests (health, recommend, errors)
+├── config/                     ← TOML config files for each entrypoint
 ├── docs/                       ← all documentation
 └── Cargo.toml                  ← dependencies and build config
 ```
@@ -1038,11 +1051,12 @@ When you load a CSV, string user/item IDs get mapped to contiguous integers (0, 
 ```rust
 // Loading
 let dataset = PolarsDataset::myket("data/myket.csv")?;
+// Sorted by timestamp, re-indexed to 0-based u32 IDs
 
-// Splitting for evaluation
+// Temporal leave-one-out split
 let (train_ds, val_interactions) = dataset.leave_one_out();
-// train_ds: PolarsDataset with all interactions except last-per-user
-// val_interactions: Vec<(u32, u32)>, one per user — the held-out items
+// train_ds: PolarsDataset with all interactions except temporally last per user
+// val_interactions: Vec<(u32, u32)>, one per user — their most recent held-out item
 ```
 
 ### The model interface (`src/models/mod.rs`)
@@ -1051,9 +1065,17 @@ let (train_ds, val_interactions) = dataset.leave_one_out();
 pub trait Scorable<B: Backend> {
     fn score(&self, users: Tensor<B, 1, Int>, items: Tensor<B, 1, Int>) -> Tensor<B, 1>;
 }
+
+pub trait Retrievable<B: Backend> {
+    fn item_embeddings(&self) -> Vec<Vec<f32>>;
+    fn user_embedding(&self, user_id: u32) -> Vec<f32>;
+}
+
+// Blanket impl: anything that's Scorable + Retrievable is a RecsysModel
+pub trait RecsysModel<B: Backend>: Scorable<B> + Retrievable<B> + Send {}
 ```
 
-Every model implements `Scorable`. The Trainer only cares about `Scorable` — it doesn't know whether it's training a GMF, NeuMF, or DeepFM. This is **polymorphism via traits**.
+Every model implements `Scorable` (for ranking) and `Retrievable` (for HNSW vector search). The Trainer only cares about `Scorable` — it doesn't know whether it's training a GMF, NeuMF, or DeepFM. This is **polymorphism via traits**.
 
 ### The trainer (`src/trainer/train.rs`)
 
@@ -1097,18 +1119,23 @@ pub fn evaluate<B, D, F>(
 ) -> EvalResult
 ```
 
-### The server (`src/bin/server.rs`)
+### The server (`src/bin/server.rs` + `src/server/`)
 
 ```
-POST /recommend
+POST /recommend  (requires x-api-key header)
   body: { "user_id": 42, "candidates": [1, 2, 3, 100] }
   returns: { "user_id": 42, "ranked": [100, 1, 3, 2], "latency_ms": 1.2 }
 
 GET /health
-  returns: { "status": "ok", "num_users": 10000, "num_items": 7988 }
+  returns: { "status": "ok", "num_users": 10000, "num_items": 7988, "model_type": "neumf", "workers": 8 }
+
+GET /ready
+  returns: { "ready": true, "workers": 8 }
+
+GET /swagger-ui  → interactive API docs
 ```
 
-The server holds the model in a `Mutex` because Burn tensors are not `Sync` (can't be safely shared between threads without locking). The `tokio::sync::Mutex` is the async-aware version that doesn't block the thread while waiting for the lock.
+The server uses a two-stage pipeline: (1) HNSW vector retrieval to find top-K candidate items from user embedding similarity, then (2) neural scoring via the full model for precision ranking. Workers are spawned at startup — each holds its own model clone — and communicate via an `mpsc` channel, so there are no locks in the hot path.
 
 ---
 
@@ -1349,17 +1376,20 @@ cargo fmt                # auto-format code
 ### Environment for this project
 
 ```bash
-# Build and run a training example
-cargo run --release --example myket_ncf -- --data data/myket.csv --epochs 10
+# Build and run a training example (reads config/train_myket.toml)
+cargo run --release --example myket_ncf
 
-# Run all tests
+# Override config with env vars
+APP_epochs=5 cargo run --release --example myket_ncf
+
+# Run all 20 tests
 cargo test
 
-# Start the serving API
-cargo run --release --bin server -- --model checkpoints/best --num-users 10000 --num-items 7988
+# Start the serving API (reads config/default.toml)
+RUST_LOG=info cargo run --release --bin server
 
-# Enable logging
-RUST_LOG=info cargo run --release --example myket_ncf
+# Enable JSON-formatted logs
+LOG_FORMAT=json RUST_LOG=info cargo run --release --bin server
 ```
 
 ---
