@@ -43,6 +43,10 @@ burn-ndarray   = "0.17"
 polars         = { version = "0.46", features = ["csv", "lazy", "strings"] }
 csv            = "1"
 
+# Docs
+utoipa         = { version = "4.1.0", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "6", features = ["axum"] }
+
 # Embedding
 instant-distance = "0.6"
 bincode = "1.3"
