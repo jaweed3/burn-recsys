@@ -1,21 +1,10 @@
 /// DeepFM — Guo et al. 2017 (https://arxiv.org/abs/1703.04247)
-///
-/// Architecture:
-///   input: [user_id, item_id]  (treated as two sparse fields)
-///
-///   FM component:
-///     first-order:  w_user + w_item                        → scalar
-///     second-order: 0.5 * (||Σ v_i||² - Σ ||v_i||²)      → scalar
-///
-///   Deep component:
-///     concat(emb_user, emb_item) → MLP → scalar
-///
-///   output: sigmoid(FM + Deep)
 use burn::{
     module::Module,
     nn::{Embedding, EmbeddingConfig, Linear, LinearConfig, Relu},
     tensor::{backend::Backend, Int, Tensor},
 };
+use crate::models::Retrievable;
 
 #[derive(Module, Debug)]
 pub struct DeepFM<B: Backend> {
@@ -128,6 +117,29 @@ impl<B: Backend> DeepFM<B> {
         let out_b = self.deep_out.bias.as_ref().map(|b| b.dims()[0]).unwrap_or(0);
 
         emb + mlp + out_w[0] * out_w[1] + out_b
+    }
+}
+
+impl<B: Backend> Retrievable<B> for DeepFM<B> {
+    fn item_embeddings(&self) -> Vec<Vec<f32>> {
+        let tensor = self.item_emb.weight.val();
+        let shape = tensor.shape();
+        let dim = shape.dims[1];
+        let flat_data: Vec<f32> = tensor.into_data().to_vec().unwrap();
+        flat_data
+            .chunks_exact(dim)
+            .map(|chunk| chunk.to_vec())
+            .collect()
+    }
+
+    fn user_embedding(&self, user_id: u32) -> Vec<f32> {
+        let weights = self.user_emb.weight.val();
+        let start = user_id as usize;
+        let user_tensor = weights.slice([start..start + 1]);
+        user_tensor
+            .into_data()
+            .to_vec::<f32>()
+            .expect("Failed to export user embedding")
     }
 }
 
