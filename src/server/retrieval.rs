@@ -6,14 +6,14 @@ pub trait CandidateGenerator: Send + Sync {
     fn generate(&self, user_id: u32, user_vector: Option<Vec<f32>>, limit: usize, exclude: &HashSet<u32>) -> Vec<u32>;
 }
 
-// Titik koordinat dalam ruang ANN
+// Point in the ANN space
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Point {
     pub vector: Vec<f32>,
     pub item_id: u32,
 }
 
-// Beritahu instant-distance cara menghitung jarak antar Point
+// Tell instant-distance how to compute distance between Points
 impl instant_distance::Point for Point {
     fn distance(&self, other: &Self) -> f32 {
         self.vector.iter()
@@ -46,17 +46,17 @@ impl VectorRetriever {
 impl CandidateGenerator for VectorRetriever {
     fn generate(&self, _user_id: u32, user_vector: Option<Vec<f32>>, limit: usize, exclude: &HashSet<u32>) -> Vec<u32> {
         if let Some(vec) = user_vector {
-            // Pencarian tetangga terdekat (ANN)
+            // Approximate nearest neighbor search
             let query = Point { vector: vec, item_id: 0 };
             let mut search = Search::default();
-            
+
             self.index.search(&query, &mut search)
                 .map(|item| item.point.item_id)
                 .filter(|id| !exclude.contains(id))
                 .take(limit)
                 .collect()
         } else {
-            // Fallback ke random jika vektor tidak ada
+            // Fallback to random if no vector available
             let mut rng = thread_rng();
             let mut candidates = HashSet::with_capacity(limit);
             let mut attempts = 0;
@@ -69,31 +69,5 @@ impl CandidateGenerator for VectorRetriever {
             }
             candidates.into_iter().collect()
         }
-    }
-}
-
-pub struct SimpleRetriever {
-    num_items: usize,
-}
-
-impl SimpleRetriever {
-    pub fn new(num_items: usize) -> Self {
-        Self { num_items }
-    }
-}
-
-impl CandidateGenerator for SimpleRetriever {
-    fn generate(&self, _user_id: u32, _user_vector: Option<Vec<f32>>, limit: usize, exclude: &HashSet<u32>) -> Vec<u32> {
-        let mut rng = thread_rng();
-        let mut candidates = HashSet::with_capacity(limit);
-        let mut attempts = 0;
-        while candidates.len() < limit && attempts < limit * 2 {
-            let item_id = rng.gen_range(0..self.num_items) as u32;
-            if !exclude.contains(&item_id) {
-                candidates.insert(item_id);
-            }
-            attempts += 1;
-        }
-        candidates.into_iter().collect()
     }
 }
