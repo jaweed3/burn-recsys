@@ -11,7 +11,6 @@ use burn::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, atomic::Ordering};
-use std::collections::HashSet;
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 use std::time::Instant;
@@ -80,66 +79,22 @@ pub async fn recommend(
         ).into_response();
     }
 
-    let user_id = payload.user_id;
-
-    // --- Retrieval Stage ---
-    let candidates = match payload.candidates {
-        Some(c) => {
-            if c.is_empty() {
-                return (
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    Json(serde_json::json!({
-                        "error": "candidates array provided but empty"
-                    })),
-                ).into_response();
-            }
-            else if c.len() > state.max_candidates {
-                return (
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    Json(serde_json::json!({
-                        "error": "candidates array is too long (max 200)"
-                    }))
-                ).into_response();
-            }
-            c
+    // Basic validation for provided candidates
+    if let Some(ref c) = payload.candidates {
+        if c.is_empty() {
+             return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({"error": "candidates array provided but empty"}))).into_response();
         }
-        None => {
-            let empty_set = HashSet::new();
-            let exclude = state.user_positives.get(&user_id).unwrap_or(&empty_set);
-            state.retriever.generate(user_id, state.retrieval_limit, exclude)
+        if c.len() > state.max_candidates {
+             return (StatusCode::PAYLOAD_TOO_LARGE, Json(serde_json::json!({"error": format!("candidates array is too long (max {})", state.max_candidates)}))).into_response();
         }
-
-
-    };
-
-    if candidates.is_empty() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": "failed to generate or find candidates"
-            })),
-        ).into_response();
-    }
-
-    if let Some(&bad) = candidates.iter().find(|&&c| c as usize >= state.num_items) {
-        warn!(item_id = bad, num_items = state.num_items, "candidate item_id out of range");
-        return (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({
-                "error": format!(
-                    "candidate item_id {} is out of range (num_items={})",
-                    bad, state.num_items
-                )
-            })),
-        ).into_response();
     }
 
     let t0 = Instant::now();
     let (resp_tx, resp_rx) = oneshot::channel();
 
     if state.tx.send(InferenceJob {
-        user_id,
-        candidates: candidates.clone(),
+        user_id: payload.user_id,
+        candidates: payload.candidates,
         resp: resp_tx,
     }).await.is_err() {
         return (
@@ -163,9 +118,9 @@ pub async fn recommend(
     };
 
     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
-    info!(n = ranked.len(), latency_ms, "recommend ok");
+    info!(user_id = payload.user_id, n = ranked.len(), latency_ms, "recommend ok");
 
-    Json(RecommendResponse { user_id, ranked, latency_ms }).into_response()
+    Json(RecommendResponse { user_id: payload.user_id, ranked, latency_ms }).into_response()
 }
 
 pub fn run_inference(
