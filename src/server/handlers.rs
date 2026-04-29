@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use crate::models::Scorable;
+use crate::telemetry::record_request;
 use burn::{
     backend::NdArray,
     tensor::{Int, Tensor, activation::sigmoid, backend::Backend},
@@ -143,6 +144,8 @@ pub async fn recommend(
 
     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
     info!(user_id = payload.user_id, n = ranked.len(), latency_ms, "recommend ok");
+
+    record_request(&state.metrics, latency_ms, &state.model_type);
 
     Json(RecommendResponse { user_id: payload.user_id, ranked, latency_ms }).into_response()
 }

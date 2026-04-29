@@ -5,7 +5,7 @@ use burn::record::CompactRecorder;
 use burn_recsys::{
     models::ncf::NeuMFConfig,
     server::{run, RecommendRequest, RecommendResponse, Settings},
-    telemetry::init_subscriber,
+    telemetry::{init_metrics, init_subscriber},
 };
 use once_cell::sync::Lazy;
 use portpicker::pick_unused_port;
@@ -79,7 +79,8 @@ async fn spawn_app() -> TestApp {
     let (model_file, data_file, settings) = create_dummy_model();
     let addr = SocketAddr::from(([127, 0, 0, 1], settings.port));
 
-    tokio::spawn(run(settings));
+    let metrics = init_metrics();
+    tokio::spawn(run(settings, metrics));
 
     let client = reqwest::Client::new(); 
     let deadline = Instant::now() + Duration::from_secs(5);

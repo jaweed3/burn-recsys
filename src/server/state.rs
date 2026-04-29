@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::sync::{Arc, atomic::AtomicBool};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::{mpsc, oneshot};
+use crate::telemetry::Metrics;
 use super::retrieval::CandidateGenerator;
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -40,4 +41,6 @@ pub struct AppState {
     pub retriever: Arc<dyn CandidateGenerator>,
     pub retrieval_limit: usize,
     pub max_candidates: usize,
+    pub metrics: Metrics,
+    pub model_type: String,
 }

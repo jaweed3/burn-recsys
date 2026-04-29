@@ -19,6 +19,7 @@ use handlers::run_inference;
 use router::create_router;
 use retrieval::{VectorRetriever, CandidateGenerator};
 use crate::data::{PolarsDataset, RecsysDataset};
+use crate::telemetry::Metrics;
 
 type B = NdArray<f32>;
 
@@ -48,7 +49,7 @@ async fn shutdown_signal() {
     info!("Shutdown signal received. Starting cleaning...");
 }
 
-pub async fn run(settings: Settings) -> anyhow::Result<()> {
+pub async fn run(settings: Settings, metrics: Metrics) -> anyhow::Result<()> {
     info!("Configuration: {:?}", settings);
     info!("Loading dataset interactions from {} for retrieval...", settings.data_path);
     
@@ -127,16 +128,19 @@ pub async fn run(settings: Settings) -> anyhow::Result<()> {
         });
     }
 
+    let model_type = settings.model_type.clone();
     let state = Arc::new(AppState {
         tx,
-        num_users: settings.num_users, 
+        num_users: settings.num_users,
         num_items: settings.num_items,
         ready: ready.clone(),
         valid_api_keys: settings.valid_api_keys.clone(),
-        user_positives: (*user_positives_shared).clone(), // Still used for metadata in handlers maybe?
+        user_positives: (*user_positives_shared).clone(),
         retriever,
         retrieval_limit: settings.retrieval_limit,
         max_candidates: settings.max_candidates,
+        metrics,
+        model_type,
     });
 
     let app = create_router(state);

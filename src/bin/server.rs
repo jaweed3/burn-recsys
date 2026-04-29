@@ -1,6 +1,6 @@
 //! src/bin/server.rs
 use burn_recsys::server::{run, Settings};
-use burn_recsys::telemetry::init_subscriber;
+use burn_recsys::telemetry::{init_metrics, init_subscriber};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -8,13 +8,16 @@ async fn main() -> anyhow::Result<()> {
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "compact".to_string());
     init_subscriber("burn_recsys=info,info".into(), log_format);
 
+    // Initialize OpenTelemetry metrics pipeline
+    let metrics = init_metrics();
+
     // Load configuration
     let builder = config::Config::builder()
         .add_source(config::File::with_name("config/default.toml"))
         .add_source(config::Environment::with_prefix("APP").separator("__"));
-    
+
     let settings: Settings = builder.build()?.try_deserialize()?;
 
     // Run the server
-    run(settings).await
+    run(settings, metrics).await
 }
