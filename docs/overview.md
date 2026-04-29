@@ -1,6 +1,6 @@
 # Overview
 
-`burn-recsys` is a production-grade recommendation system built entirely in Rust. It implements two neural collaborative filtering architectures — **NeuMF** and **DeepFM** — and ships with a full pipeline from raw data ingestion to a live HTTP serving API.
+`burn-recsys` is a production-grade recommendation system built entirely in Rust. It implements three neural collaborative filtering architectures — **GMF**, **NeuMF**, and **DeepFM** — and ships with a full pipeline from raw data ingestion to a live HTTP serving API with two-stage retrieval + ranking.
 
 ---
 
@@ -63,11 +63,10 @@ burn-recsys/
 ├── src/
 │   ├── data/
 │   │   ├── dataset.rs          # RecsysDataset trait
-│   │   ├── myket.rs            # Myket CSV loader (csv crate)
-│   │   ├── movielens.rs        # MovieLens 1M loader
-│   │   ├── polars_loader.rs    # Fast Polars-backed loader
+│   │   ├── polars_loader.rs    # Polars-backed CSV loader + leave-one-out split
 │   │   └── sampler.rs          # Negative sampler (training + eval)
 │   ├── models/
+│   │   ├── mod.rs              # Scorable + Retrievable traits
 │   │   ├── gmf.rs              # Generalized Matrix Factorization
 │   │   ├── ncf.rs              # NeuMF (GMF + MLP paths)
 │   │   └── deepfm.rs           # DeepFM (FM + Deep paths)
@@ -76,16 +75,38 @@ burn-recsys/
 │   │   ├── hit_rate.rs         # HR@k
 │   │   └── ndcg.rs             # NDCG@k
 │   ├── trainer/
-│   │   └── train.rs            # Adam + BCE + early stopping + checkpoints
-│   ├── telemetry.rs            # OpenTelemetry setup
+│   │   ├── config.rs           # TrainerSettings (TOML-driven)
+│   │   └── train.rs            # Generic trainer: Adam + BCE + early stopping + experiment log
+│   ├── server/
+│   │   ├── mod.rs              # run() — worker pool, HNSW retriever, two-stage pipeline
+│   │   ├── handlers.rs         # /health, /ready, /recommend handlers
+│   │   ├── router.rs           # Axum router + Swagger UI
+│   │   ├── state.rs            # AppState, Settings, InferenceJob
+│   │   ├── model.rs            # Model loader (neumf/deepfm/gmf)
+│   │   └── retrieval.rs        # VectorRetriever (HNSW ANN) + CandidateGenerator trait
+│   ├── middleware/
+│   │   ├── mod.rs
+│   │   └── layer.rs            # API key auth middleware
+│   ├── telemetry.rs            # OpenTelemetry metrics + tracing
+│   ├── lib.rs
 │   └── bin/
-│       └── server.rs           # Axum HTTP server
+│       └── server.rs           # Entrypoint: init telemetry, load config, run server
 ├── examples/
 │   ├── myket_ncf.rs            # Train NeuMF on Myket
 │   ├── movielens_ncf.rs        # Train NeuMF on MovieLens
 │   ├── evaluate.rs             # GMF vs NeuMF head-to-head
-│   ├── model_info.rs           # Param counts
+│   ├── model_info.rs           # Param counts for all models
 │   └── validate_data.rs        # Data pipeline smoke test
+├── tests/
+│   ├── integration.rs          # End-to-end: train → save → load → eval
+│   └── server.rs               # HTTP: health, ready, recommend, validation
+├── config/
+│   ├── default.toml            # Server configuration
+│   ├── train_myket.toml        # Myket training config
+│   ├── train_movielens.toml    # MovieLens training config
+│   ├── evaluate.toml           # Evaluation config
+│   ├── model_info.toml         # Model info config
+│   └── validate_data.toml      # Data validation config
 ├── scripts/
 │   ├── download_myket.py       # HuggingFace → CSV
 │   └── download_movielens.py   # GroupLens → CSV
@@ -93,6 +114,7 @@ burn-recsys/
 │   ├── overview.md             # This file
 │   ├── architecture.md         # System design + math
 │   ├── why-rust.md             # Language choice rationale
-│   └── getting-started.md      # Build, train, serve
+│   ├── getting-started.md      # Build, train, serve
+│   └── rust-ml-intern-guide.md # Complete Rust + ML intern guide
 └── pyproject.toml              # uv project for Python scripts
 ```
