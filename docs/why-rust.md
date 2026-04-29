@@ -33,7 +33,7 @@ Rust enforces memory safety at compile time through its ownership and borrow che
 - References are either shared immutable (`&T`) or exclusive mutable (`&mut T`), never both
 - No use-after-free, no double-free, no data races — guaranteed by the type system
 
-The thread-safety bug we encountered in this project (`NeuMF<NdArray>` not being `Sync` because `Param` uses `OnceCell`) was caught at compile time, not in production under load. The fix — wrapping in `Mutex<NeuMF<B>>` — made the sharing contract explicit in the type. There is no equivalent mechanism in Python; the same bug manifests as a segfault or silent corruption in a multi-threaded NumPy workload.
+The thread-safety constraints in this project (`NeuMF<NdArray>` not being `Sync` because `Param` uses `OnceCell`) were caught at compile time. The fix — one model clone per worker thread behind an mpsc channel — made the sharing contract explicit in the type. There is no equivalent mechanism in Python; the same bug manifests as a segfault or silent corruption in a multi-threaded NumPy workload.
 
 ---
 
@@ -66,7 +66,7 @@ More importantly, Polars memory consumption is predictable. Pandas is notorious 
 
 Tokio implements an async runtime using a work-stealing thread pool. Each Tokio task is a lightweight coroutine (~few KB of stack), not an OS thread (~1MB of stack). This means a single server process can handle thousands of concurrent `/recommend` requests without exhausting memory on thread stacks.
 
-For recommendation serving, the bottleneck is not I/O (there is no disk or network access in the hot path) but CPU (model inference). The design here is intentional: Tokio handles connection management and request parsing, then inference runs synchronously under a `Mutex` lock. This keeps the inference path simple while still allowing the HTTP layer to pipeline requests.
+For recommendation serving, the bottleneck is not I/O (there is no disk or network access in the hot path) but CPU (model inference). The design uses an mpsc channel to distribute requests across a pool of worker threads, each holding its own model clone — no locks in the hot path. Tokio handles connection management and request parsing, then inference runs on dedicated workers in a two-stage pipeline: HNSW vector retrieval followed by neural scoring and ranking.
 
 ### OpenTelemetry — vendor-neutral observability
 
