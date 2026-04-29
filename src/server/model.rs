@@ -1,5 +1,5 @@
 use crate::models::{
-    Scorable,
+    RecsysModel,
     ncf::NeuMFConfig,
     deepfm::DeepFMConfig,
     gmf::GMFConfig
@@ -17,7 +17,7 @@ type B = NdArray<f32>;
 pub fn load_model(
     settings: &Settings,
     device: &<B as Backend>::Device,
-) -> anyhow::Result<Box<dyn Scorable<B> + Send>> {
+) -> anyhow::Result<Box<dyn RecsysModel<B>>> {
     match settings.model_type.as_str() {
         "neumf" => {
             let config = NeuMFConfig {

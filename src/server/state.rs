@@ -26,7 +26,7 @@ pub struct Settings {
 
 pub struct InferenceJob {
     pub user_id: u32,
-    pub candidates: Vec<u32>,
+    pub candidates: Option<Vec<u32>>,
     pub resp: oneshot::Sender<Vec<u32>>,
 }
 
