@@ -21,6 +21,12 @@ pub trait Scorable<B: Backend> {
 ) -> Tensor<B, 1>;
 }
 
+pub trait Retrievable<B: Backend> {
+    // taking embedding matrix for all items
+    fn item_embeddings(&self) -> Vec<Vec<f32>>;
+    fn user_embedding(&self, user_id: u32) -> Vec<f32>;
+}
+
 impl<B: Backend> Scorable<B> for GMF<B> {
     fn score(
         &self,
@@ -50,3 +56,7 @@ impl<B: Backend> Scorable<B> for DeepFM<B> {
         self.forward(users, items)
     }
 }
+
+pub trait RecsysModel<B: Backend>: Scorable<B> + Retrievable<B> + Send {}
+
+impl<B: Backend, T> RecsysModel<B> for T where T: Scorable<B> + Retrievable<B> + Send {}
