@@ -2,7 +2,7 @@
 
 Production-grade recommendation system in Rust — GMF + NeuMF + DeepFM with Burn, Polars data pipeline, Axum serving API (two-stage retrieval + ranking), and OpenTelemetry observability.
 
-[![CI](https://github.com/wedjaw/burn-recsys/actions/workflows/ci.yml/badge.svg)](https://github.com/wedjaw/burn-recsys/actions/workflows/ci.yml)
+[![CI](https://github.com/jaweed3/burn-recsys/actions/workflows/ci.yml/badge.svg)](https://github.com/jaweed3/burn-recsys/actions/workflows/ci.yml)
 
 ---
 
@@ -12,6 +12,7 @@ Production-grade recommendation system in Rust — GMF + NeuMF + DeepFM with Bur
 |--------|--------|---------|--------|
 | GMF    | 0.180  | 0.103   | 1.15M  |
 | NeuMF  | **0.604** | **0.414** | 2.31M |
+| DeepFM | —      | —       | 1.19M  |
 
 Myket dataset, 5 epochs, temporal leave-one-out eval (99 negatives + 1 ground truth per user).
 Serving latency: **0.49ms** median per inference on CPU.
