@@ -43,4 +43,5 @@ pub struct AppState {
     pub max_candidates: usize,
     pub metrics: Metrics,
     pub model_type: String,
+    pub worker_count: usize,
 }
