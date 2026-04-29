@@ -24,13 +24,13 @@ cd burn-recsys
 # Check everything compiles (fast — no training data needed)
 cargo check
 
-# Run unit tests (13 tests, ~1 second)
+# Run all tests (20 tests, ~2 seconds)
 cargo test
 ```
 
 Expected output:
 ```
-test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured
 ```
 
 ---
@@ -74,92 +74,73 @@ cargo run --example model_info
 ```
 
 ```
-=== Model Architecture ===
-
-Dataset  : Myket (10000 users, 7988 items)
-
-GMF
-  user emb   : 10000 × 64
-  item emb   : 7988 × 64
-  output     : 64 → 1
-  params     :    1151296
-
-NeuMF (GMF path + MLP path)
-  GMF user/item emb : 10000 × 64  |  7988 × 64
-  MLP user/item emb : 10000 × 64  |  7988 × 64
-  MLP layers        : 128→64→32→16
-  output            : (64+16) → 1
-  params            :    2313409
+=== Model Architecture Info ===
+Model Type: NeuMF
+Parameters: 2313409
 ```
 
 ---
 
 ## Step 4 — Train
 
-### NeuMF on Myket (default: 20 epochs)
+### NeuMF on Myket
 
 ```bash
 cargo run --release --example myket_ncf
-```
-
-### Fewer epochs (for quick testing)
-
-```bash
-cargo run --release --example myket_ncf -- --epochs 5
+# Reads config/train_myket.toml. Override with env vars:
+# APP_epochs=5 cargo run --release --example myket_ncf
 ```
 
 ### NeuMF on MovieLens
 
 ```bash
-cargo run --release --example movielens_ncf -- --epochs 10
+cargo run --release --example movielens_ncf
+# Reads config/train_movielens.toml
 ```
 
 Training output (per epoch):
 ```
 NeuMF params: 2313409
-Epoch   1/5 | loss=0.362945 | 44.0s
-Epoch   2/5 | loss=0.342207 | 44.4s
-Epoch   3/5 | loss=0.338582 | 44.4s
-Epoch   4/5 | loss=0.334605 | 43.6s
-Epoch   5/5 | loss=0.330360 | 43.6s
-Done. Checkpoints saved to checkpoints/
+Epoch   1/20 | loss=0.362945 | HR@10=0.4512 NDCG@10=0.2873 | 44.0s
+Epoch   2/20 | loss=0.342207 | HR@10=0.5123 NDCG@10=0.3341 | 44.4s
+...
+Best epoch: 5 | HR@10=0.6041 | NDCG@10=0.4136
 ```
 
 Checkpoints are saved as MessagePack files:
 ```
 checkpoints/
-├── epoch_001.mpk
-├── epoch_002.mpk
-...
-└── epoch_005.mpk
+├── config.toml     # training config for reproducibility
+└── best.mpk         # best checkpoint by validation HR@10
 ```
 
 ### Training configuration
 
-Edit `TrainConfig` defaults in `src/trainer/train.rs` or pass via the example:
+Edit the TOML config file (e.g., `config/train_myket.toml`) or override with env vars (`APP_` prefix):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `embedding_dim` | 64 | Embedding vector size |
-| `mlp_layers` | [128,64,32,16] | MLP hidden layer sizes |
 | `learning_rate` | 0.001 | Adam learning rate |
 | `batch_size` | 256 | Interactions per gradient step |
-| `num_epochs` | 20 | Maximum training epochs |
+| `epochs` | 20 | Maximum training epochs |
 | `neg_ratio` | 4 | Negative samples per positive |
-| `patience` | 3 | Early stopping patience (epochs) |
+| `patience` | 3 | Early stopping on val HR@k (epochs) |
+| `val_samples` | 300 | Users sampled per validation pass |
+| `eval_k` | 10 | k for HR@k / NDCG@k tracking |
 
 ---
 
 ## Step 5 — Evaluate
 
-Compare GMF vs NeuMF with leave-one-out HR@10 and NDCG@10:
+Compare GMF vs NeuMF with temporal leave-one-out HR@10 and NDCG@10:
 
 ```bash
-# Quick evaluation: 5 epochs, 500 users
-cargo run --release --example evaluate -- --epochs 5 --users 500
+# Reads config/evaluate.toml
+cargo run --release --example evaluate
 
-# Full evaluation: 10 epochs, all test users
-cargo run --release --example evaluate -- --epochs 10
+# Override with env vars:
+# APP_epochs=5 APP_users=500 cargo run --release --example evaluate
 ```
 
 Output:
@@ -176,19 +157,18 @@ Output:
 
 ## Step 6 — Serve
 
-Start the recommendation API (requires a checkpoint from Step 4):
+Start the recommendation API (reads `config/default.toml`, requires a trained checkpoint):
 
 ```bash
-cargo run --release --bin server -- \
-  --model checkpoints/epoch_005.mpk \
-  --num-users 10000 \
-  --num-items 7988 \
-  --port 3000
+cargo run --release --bin server
 ```
 
 ```
-INFO server: Model loaded (10000 users, 7988 items)
-INFO server: Listening on http://0.0.0.0:3000
+INFO burn_recsys::server: Configuration: Settings { model: "checkpoints/best", model_type: "neumf", port: 3000, ... }
+INFO burn_recsys::server: Model loaded and embeddings extracted (10000 users, 7988 items)
+INFO burn_recsys::server: Inference worker 0 started
+...
+INFO burn_recsys::server: Listening on 0.0.0.0:3000
 ```
 
 ### API Reference
@@ -200,7 +180,17 @@ curl http://localhost:3000/health
 ```
 
 ```json
-{"status": "ok", "num_items": 7988}
+{"status":"ok","num_users":10000,"num_items":7988,"model_type":"neumf","workers":8}
+```
+
+#### `GET /ready`
+
+```bash
+curl http://localhost:3000/ready
+```
+
+```json
+{"ready":true,"workers":8}
 ```
 
 #### `POST /recommend`
@@ -208,6 +198,7 @@ curl http://localhost:3000/health
 ```bash
 curl -X POST http://localhost:3000/recommend \
   -H 'Content-Type: application/json' \
+  -H 'x-api-key: admin_bismillah' \
   -d '{"user_id": 42, "candidates": [10, 20, 30, 40, 50]}'
 ```
 
@@ -224,9 +215,13 @@ curl -X POST http://localhost:3000/recommend \
 | Field | Type | Description |
 |-------|------|-------------|
 | `user_id` | u32 | Re-indexed user ID (0-based, from the dataset mapping) |
-| `candidates` | Vec\<u32\> | Item IDs to score. If empty, ranks all items. |
+| `candidates` | Option\<Vec\<u32\>\> | Item IDs to score. If `null`/omitted, uses two-stage retrieval (HNSW → ranking). |
 
-**Note on IDs:** The server uses the re-indexed IDs produced by the data loader, not the original raw IDs from the CSV. To look up the mapping, use `MyketDataset::user_map` and `item_map` from the library.
+**Authentication:** Requires `x-api-key` header (configured in `config/default.toml`).
+
+**Swagger UI:** Interactive API docs at `http://localhost:3000/swagger-ui`.
+
+**Note on IDs:** The server uses the re-indexed IDs produced by the data loader, not the original raw IDs from the CSV. Use `PolarsDataset::user_index` and `item_index` for the mapping.
 
 ---
 
@@ -260,7 +255,19 @@ Expected speedup: ~5–10× per epoch on RTX 4060 vs M4 CPU.
 
 ## Adding a New Dataset
 
-1. Implement `RecsysDataset`:
+1. Use `PolarsDataset::from_csv()` if your data is a CSV:
+
+```rust
+let dataset = PolarsDataset::from_csv(
+    "data/my_data.csv",
+    "user_id",          // user column name
+    "item_id",          // item column name
+    Some("timestamp"),  // optional timestamp for temporal split
+)?;
+let (train_ds, val) = dataset.leave_one_out();
+```
+
+2. Or implement `RecsysDataset` for a custom data source:
 
 ```rust
 pub struct MyDataset { /* ... */ }
@@ -273,13 +280,7 @@ impl RecsysDataset for MyDataset {
 }
 ```
 
-2. Or use `PolarsDataset` directly if your data is a CSV:
-
-```rust
-let dataset = PolarsDataset::from_csv("data/my_data.csv", "user_id", "item_id")?;
-```
-
-3. The model, trainer, and evaluator require no changes.
+3. The model, trainer, and evaluator require no changes — they work with any `RecsysDataset`.
 
 ---
 
@@ -297,11 +298,15 @@ Run the download script first: `uv run python scripts/download_myket.py`
 
 **`Failed to load checkpoint`**
 
-Checkpoint files are generated during training. Run `cargo run --release --example myket_ncf -- --epochs 5` first.
+Checkpoint files are generated during training. Run `cargo run --release --example myket_ncf` first. The best checkpoint is saved as `checkpoints/best.mpk`.
 
 **`user_id` mismatch between dataset and server**
 
-The server uses 0-based re-indexed IDs, not raw CSV IDs. User `42` in the server refers to whichever raw user was assigned index 42 during loading. If you need the mapping, load the dataset and inspect `dataset.user_map`.
+The server uses 0-based re-indexed IDs, not raw CSV IDs. User `42` in the server refers to whichever raw user was assigned index 42 during loading. If you need the mapping, load the dataset and inspect `dataset.user_index`.
+
+**`401 Unauthorized` on /recommend**
+
+Add the `x-api-key` header. Default key is `admin_bismillah` (set in `config/default.toml`).
 
 **OOM during training**
 
