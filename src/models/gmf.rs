@@ -4,6 +4,8 @@ use burn::{
     tensor::{backend::Backend, Int, Tensor},
 };
 
+use crate::models::Retrievable;
+
 #[derive(Module, Debug)]
 pub struct GMF<B: Backend> {
     user_embedding: Embedding<B>,
@@ -54,6 +56,29 @@ impl<B: Backend> GMF<B> {
             + d(self.item_embedding.weight.dims())
             + d(self.output.weight.dims())
             + bias
+    }
+}
+
+impl<B: Backend> Retrievable<B> for GMF<B> {
+    fn item_embeddings(&self) -> Vec<Vec<f32>> {
+        let tensor = self.item_embedding.weight.val();
+        let shape = tensor.shape();
+        let dim = shape.dims[1];
+        let flat_data: Vec<f32> = tensor.into_data().to_vec().unwrap();
+        flat_data
+            .chunks_exact(dim)
+            .map(|chunk| chunk.to_vec())
+            .collect()
+    }
+
+    fn user_embedding(&self, user_id: u32) -> Vec<f32> {
+        let weights = self.user_embedding.weight.val();
+        let start = user_id as usize;
+        let user_tensor = weights.slice([start..start + 1]);
+        user_tensor
+            .into_data()
+            .to_vec::<f32>()
+            .expect("Failed to export user embedding")
     }
 }
 
