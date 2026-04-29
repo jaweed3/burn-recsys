@@ -129,6 +129,7 @@ pub async fn run(settings: Settings, metrics: Metrics) -> anyhow::Result<()> {
     }
 
     let model_type = settings.model_type.clone();
+    let worker_count = workers;
     let state = Arc::new(AppState {
         tx,
         num_users: settings.num_users,
@@ -141,6 +142,7 @@ pub async fn run(settings: Settings, metrics: Metrics) -> anyhow::Result<()> {
         max_candidates: settings.max_candidates,
         metrics,
         model_type,
+        worker_count,
     });
 
     let app = create_router(state);
