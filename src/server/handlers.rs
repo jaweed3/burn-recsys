@@ -14,6 +14,7 @@ use std::sync::{Arc, atomic::Ordering};
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 use std::time::Instant;
+use utoipa::ToSchema;
 
 use super::state::{AppState, InferenceJob};
 
@@ -21,20 +22,20 @@ type B = NdArray<f32>;
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, ToSchema)]
 pub struct RecommendRequest {
     pub user_id: u32,
     pub candidates: Option<Vec<u32>>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, ToSchema)]
 pub struct RecommendResponse {
     pub user_id: u32,
     pub ranked: Vec<u32>,
     pub latency_ms: f64,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, ToSchema)]
 pub struct HealthResponse {
     pub status: &'static str,
     pub num_users: usize,
@@ -42,7 +43,13 @@ pub struct HealthResponse {
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
-
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Server is Alive", body = HealthResponse)
+    )
+)]
 pub async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     (
         StatusCode::OK,
@@ -54,6 +61,13 @@ pub async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     )
 }
 
+#[utoipa::path(
+    get,
+    path = "/ready",
+    responses(
+        (status = 200, description = "Server is ready, Model loaded")
+    )
+)]
 pub async fn get_ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     if state.ready.load(Ordering::Acquire) {
         StatusCode::OK
@@ -62,6 +76,16 @@ pub async fn get_ready(State(state): State<Arc<AppState>>) -> impl IntoResponse 
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/recommend",
+    params(
+        ("x-api-key" = String, Header, description = "Required API key to access this thing :v")
+    ),
+    responses(
+        (status = 200, description = "recommend the user", body = RecommendResponse)
+    )
+)]
 pub async fn recommend(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RecommendRequest>,
