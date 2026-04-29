@@ -1,49 +1,75 @@
-use instant_distance::{Builder, Hnsw, MapItem};
-use serde::{Deserialize, Serialize};
-use rand::{prelude::*, seq::index};
+use instant_distance::{Builder, HnswMap, Search};
+use rand::prelude::*;
 use std::collections::HashSet;
 
-#[derive(Clone, Serialize, Deserialize)]
-struct Point {
-    vector: Vec<f32>,
-    item_id: u32,
+pub trait CandidateGenerator: Send + Sync {
+    fn generate(&self, user_id: u32, user_vector: Option<Vec<f32>>, limit: usize, exclude: &HashSet<u32>) -> Vec<u32>;
 }
 
+// Titik koordinat dalam ruang ANN
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Point {
+    pub vector: Vec<f32>,
+    pub item_id: u32,
+}
+
+// Beritahu instant-distance cara menghitung jarak antar Point
 impl instant_distance::Point for Point {
     fn distance(&self, other: &Self) -> f32 {
-        let dist: f32 = self.vector.iter()
+        self.vector.iter()
             .zip(&other.vector)
             .map(|(a, b)| (a - b).powi(2))
-            .sum();
-        dist.sqrt()
+            .sum::<f32>()
+            .sqrt()
     }
 }
 
 pub struct VectorRetriever {
-    index: Hnsw<Point>,
+    index: HnswMap<Point, ()>,
+    num_items: usize,
 }
 
 impl VectorRetriever {
     pub fn new(embeddings: Vec<Vec<f32>>) -> Self {
+        let num_items = embeddings.len();
         let points: Vec<Point> = embeddings.into_iter().enumerate()
-            .map(|(i, v)| Point {vector: v, item_id: i as u32})
+            .map(|(i, v)| Point { vector: v, item_id: i as u32 })
             .collect();
 
-        let index = Builder::default().build(points, vec![(); points.len()]);
-
-        Self { index }
+        let values = vec![(); points.len()];
+        let index = Builder::default().build(points, values);
+        
+        Self { index, num_items }
     }
 }
 
 impl CandidateGenerator for VectorRetriever {
-    fn generate(&self, user_id: u32, limit: usize, exclude: &HashSet<u32>) -> Vec<u32> {
-        // TODO: take user embedding from model to search nearest relevant item.
-        vec![]
+    fn generate(&self, _user_id: u32, user_vector: Option<Vec<f32>>, limit: usize, exclude: &HashSet<u32>) -> Vec<u32> {
+        if let Some(vec) = user_vector {
+            // Pencarian tetangga terdekat (ANN)
+            let query = Point { vector: vec, item_id: 0 };
+            let mut search = Search::default();
+            
+            self.index.search(&query, &mut search)
+                .map(|item| item.point.item_id)
+                .filter(|id| !exclude.contains(id))
+                .take(limit)
+                .collect()
+        } else {
+            // Fallback ke random jika vektor tidak ada
+            let mut rng = thread_rng();
+            let mut candidates = HashSet::with_capacity(limit);
+            let mut attempts = 0;
+            while candidates.len() < limit && attempts < limit * 2 {
+                let item_id = rng.gen_range(0..self.num_items) as u32;
+                if !exclude.contains(&item_id) {
+                    candidates.insert(item_id);
+                }
+                attempts += 1;
+            }
+            candidates.into_iter().collect()
+        }
     }
-}
-
-pub trait CandidateGenerator: Send + Sync {
-    fn generate(&self, user_id: u32, limit: usize, exclude: &HashSet<u32>) -> Vec<u32>;
 }
 
 pub struct SimpleRetriever {
@@ -57,12 +83,9 @@ impl SimpleRetriever {
 }
 
 impl CandidateGenerator for SimpleRetriever {
-    fn generate(&self, _user_id: u32, limit: usize, exclude: &HashSet<u32>) -> Vec<u32> {
+    fn generate(&self, _user_id: u32, _user_vector: Option<Vec<f32>>, limit: usize, exclude: &HashSet<u32>) -> Vec<u32> {
         let mut rng = thread_rng();
         let mut candidates = HashSet::with_capacity(limit);
-        
-        // Simple random retrieval, avoiding already interacted items
-        // In a real system, this would use an ANN index (like Faiss/Hnsw)
         let mut attempts = 0;
         while candidates.len() < limit && attempts < limit * 2 {
             let item_id = rng.gen_range(0..self.num_items) as u32;
@@ -71,7 +94,6 @@ impl CandidateGenerator for SimpleRetriever {
             }
             attempts += 1;
         }
-
         candidates.into_iter().collect()
     }
 }
