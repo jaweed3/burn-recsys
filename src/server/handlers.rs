@@ -41,6 +41,14 @@ pub struct HealthResponse {
     pub status: &'static str,
     pub num_users: usize,
     pub num_items: usize,
+    pub model_type: String,
+    pub workers: usize,
+}
+
+#[derive(Deserialize, Serialize, ToSchema)]
+pub struct ReadyResponse {
+    pub ready: bool,
+    pub workers: usize,
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -58,6 +66,8 @@ pub async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             status: "ok",
             num_users: state.num_users,
             num_items: state.num_items,
+            model_type: state.model_type.clone(),
+            workers: state.worker_count,
         }),
     )
 }
@@ -66,14 +76,15 @@ pub async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     get,
     path = "/ready",
     responses(
-        (status = 200, description = "Server is ready, Model loaded")
+        (status = 200, description = "Server is ready, model loaded", body = ReadyResponse),
+        (status = 503, description = "Server not ready yet")
     )
 )]
 pub async fn get_ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     if state.ready.load(Ordering::Acquire) {
-        StatusCode::OK
+        (StatusCode::OK, Json(ReadyResponse { ready: true, workers: state.worker_count })).into_response()
     } else {
-        StatusCode::SERVICE_UNAVAILABLE
+        (StatusCode::SERVICE_UNAVAILABLE, Json(ReadyResponse { ready: false, workers: state.worker_count })).into_response()
     }
 }
 
