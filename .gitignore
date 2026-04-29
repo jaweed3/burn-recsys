@@ -1,1 +1,7 @@
 /target
+*.mpk
+.DS_Store
+experiments.csv
+__pycache__/
+*.swp
+*.swo
