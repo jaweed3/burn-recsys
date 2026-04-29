@@ -13,36 +13,44 @@ This document covers the system architecture — how data flows from raw CSV to 
 │  Raw CSV ──► LazyCsvReader ──► cast + dedup ──► collect             │
 │                  │                                                   │
 │                  └──► re-index (user_id, item_id → 0-based u32)     │
+│                  └──► temporal sort by timestamp                    │
 │                  └──► NegativeSampler (training + eval)             │
+│                  └──► leave_one_out() temporal split                │
 └─────────────────────────────┬───────────────────────────────────────┘
                               │ Vec<(u32, u32)>
 ┌─────────────────────────────▼───────────────────────────────────────┐
 │                         Model Layer (Burn)                           │
 │                                                                      │
 │  ┌─────────┐   ┌─────────┐   ┌─────────┐                           │
-│  │   GMF   │   │  NeuMF  │   │ DeepFM  │  ← same forward() API     │
+│  │   GMF   │   │  NeuMF  │   │ DeepFM  │  ← Scorable + Retrievable │
 │  └─────────┘   └─────────┘   └─────────┘                           │
 │                                                                      │
-│  Training: Adam + BCELoss + early stopping + .mpk checkpoints       │
+│  Training: Adam + BCELoss + val HR@k early stopping + .mpk ckpts   │
 └─────────────────────────────┬───────────────────────────────────────┘
-                              │ NeuMF<NdArray> loaded from .mpk
+                              │ model loaded from best.mpk
 ┌─────────────────────────────▼───────────────────────────────────────┐
-│                        Serving Layer (Axum + Tokio)                  │
+│                   Serving Layer (Axum + Tokio worker pool)           │
 │                                                                      │
 │  POST /recommend                                                     │
 │   {"user_id": 42, "candidates": [...]}                              │
 │         │                                                            │
-│         ├── Mutex::lock() ──► model.forward(users, items)           │
+│         ├── mpsc channel ──► worker pool (N × model clones)         │
+│         ├── Stage 1: HNSW retrieval (user_vec → top-K items)       │
+│         ├── Stage 2: model.score() ranking (precision scoring)      │
 │         ├── sort by score descending                                 │
 │         └── {"ranked": [...], "latency_ms": 0.49}                  │
+│                                                                      │
+│  GET /health    → {"status":"ok","model_type":"neumf","workers":8}  │
+│  GET /ready     → {"ready":true,"workers":8}                        │
+│  GET /swagger-ui → interactive API documentation                     │
 └─────────────────────────────┬───────────────────────────────────────┘
-                              │ spans + metrics
+                              │ record_request() in hot path
 ┌─────────────────────────────▼───────────────────────────────────────┐
 │                    Observability (OpenTelemetry)                      │
 │                                                                      │
-│  Counters:    recsys.recommend.requests, recsys.data.rows_loaded     │
+│  Counters:    recsys.recommend.requests (with model label)           │
 │  Histograms:  recsys.recommend.latency_ms, recsys.train.epoch_loss  │
-│  Export:      stdout → pipe to Jaeger / Prometheus                  │
+│  Export:      stdout → pipe to Prometheus / OTel Collector          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -187,13 +195,14 @@ Optimizer: Adam with $\alpha = 10^{-3}$, $\beta_1 = 0.9$, $\beta_2 = 0.999$.
 
 ## Evaluation Protocol
 
-**Leave-one-out** (standard in NCF literature):
+**Temporal leave-one-out** (standard in NCF literature):
 
-1. For each user, hide their temporally last interaction as ground truth.
-2. Sample 99 random items the user has not interacted with.
-3. Score all 100 candidates with the trained model.
-4. Rank descending by score.
-5. Measure HR@10 and NDCG@10.
+1. Sort each user's interactions by timestamp ascending.
+2. For each user, hide their temporally **last** interaction as ground truth.
+3. Sample 99 random items the user has not interacted with.
+4. Score all 100 candidates with the trained model.
+5. Rank descending by score.
+6. Measure HR@10 and NDCG@10.
 
 **Hit Rate at k:**
 
