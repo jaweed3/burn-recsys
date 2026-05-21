@@ -31,10 +31,11 @@ USER appuser
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/target/release/server .
 
-# Copy assets and configuration
+# Copy assets, configuration, and data
 USER root
 COPY --chown=appuser:appuser checkpoints ./checkpoints
 COPY --chown=appuser:appuser config ./config
+COPY --chown=appuser:appuser data ./data
 USER appuser
 
 # Expose port
