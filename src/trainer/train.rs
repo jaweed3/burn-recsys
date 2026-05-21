@@ -189,6 +189,8 @@ impl<B: AutodiffBackend> Trainer<B> {
                 );
             }
 
+            log_epoch(epoch, avg_loss, val_hr, val_ndcg);
+
             // ── Best checkpoint ──────────────────────────────────────────────
             let improved = if use_validation {
                 val_hr > best_hr + 1e-5
@@ -250,6 +252,22 @@ fn bce_loss<B: AutodiffBackend>(
         + ((ones.clone() - labels) * (ones - probs).log()))
         .mean()
         .neg()
+}
+
+// ── Per-epoch log ─────────────────────────────────────────────────────────────
+
+fn log_epoch(epoch: usize, avg_loss: f32, val_hr: f32, val_ndcg: f32) {
+    let path = "experiments_epochs.csv";
+    let write_header = !std::path::Path::new(path).exists();
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .unwrap_or_else(|_| std::fs::File::create(path).unwrap());
+    if write_header {
+        writeln!(file, "epoch,loss,hr_at_10,ndcg_at_10").ok();
+    }
+    writeln!(file, "{epoch},{avg_loss:.6},{val_hr:.4},{val_ndcg:.4}").ok();
 }
 
 // ── Experiment log ────────────────────────────────────────────────────────────
