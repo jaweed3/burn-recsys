@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>burn-recsys — Neural Recommendation Engine in Rust</title>
+  <meta name="description" content="Production-grade recommendation system in Rust. GMF, NeuMF, DeepFM. Sub-millisecond inference. Two-stage retrieval + ranking. OpenTelemetry observability." />
+  <meta name="keywords" content="recommendation system, rust, machine learning, collaborative filtering, neural network, burn, recommender, edge ai" />
+  <meta name="author" content="burn-recsys" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#3E3128" />
+
+  <meta property="og:title" content="burn-recsys — Neural Recommendation Engine in Rust" />
+  <meta property="og:description" content="GMF · NeuMF · DeepFM. Sub-millisecond inference. A single static binary from training to serving." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wedjaw.github.io/burn-recsys" />
+  <meta property="og:image" content="https://wedjaw.github.io/burn-recsys/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="burn-recsys" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="burn-recsys — Neural Recommendation Engine in Rust" />
+  <meta name="twitter:description" content="Sub-millisecond inference. Zero Python. Single static binary." />
+  <meta name="twitter:image" content="https://wedjaw.github.io/burn-recsys/og-image.png" />
+
+  <link rel="icon" type="image/svg+xml" href="/burn-recsys/favicon.svg" />
+  <link rel="alternate icon" type="image/png" href="/burn-recsys/favicon-32x32.png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="/burn-recsys/apple-touch-icon.png" sizes="180x180" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <script type="module" src="/src/main.ts"></script>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <!-- Navigation -->
+  <header class="nav" id="nav" role="banner">
+    <div class="nav__inner container">
+      <a href="#" class="nav__logo" aria-label="burn-recsys home">
+        <span class="nav__monogram">BR</span>
+        <span class="nav__wordmark">burn-recsys</span>
+      </a>
+      <nav class="nav__links" aria-label="Main navigation">
+        <a href="#architecture" class="nav__link">Architecture</a>
+        <a href="#models" class="nav__link">Models</a>
+        <a href="#performance" class="nav__link">Performance</a>
+        <a href="#get-started" class="nav__link">Get Started</a>
+        <a href="https://github.com/wedjaw/burn-recsys" class="btn btn--outline btn--sm" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
+      <button class="nav__hamburger" aria-label="Toggle menu" aria-expanded="false">
+        <span class="nav__hamburger-line"></span>
+        <span class="nav__hamburger-line"></span>
+        <span class="nav__hamburger-line"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Nav Overlay -->
+  <div class="nav-overlay" id="nav-overlay" aria-hidden="true">
+    <nav class="nav-overlay__inner" aria-label="Mobile navigation">
+      <a href="#architecture" class="nav-overlay__link">Architecture</a>
+      <a href="#models" class="nav-overlay__link">Models</a>
+      <a href="#performance" class="nav-overlay__link">Performance</a>
+      <a href="#get-started" class="nav-overlay__link">Get Started</a>
+      <a href="https://github.com/wedjaw/burn-recsys" class="btn btn--outline btn--sm" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </div>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero grain" id="hero">
+      <div class="hero__inner container">
+        <span class="hero__label animate" data-animate="fade-up">Neural Recommendation Engine</span>
+        <h1 class="hero__headline animate" data-animate="fade-up">
+          Recommendations,<br />
+          <em>reimagined in Rust.</em>
+        </h1>
+        <hr class="hero__rule animate" data-animate="scale-x" />
+        <p class="hero__subtitle animate" data-animate="fade-up">
+          GMF · NeuMF · DeepFM. Sub-millisecond inference.<br />
+          A single static binary from training to serving.
+        </p>
+        <div class="hero__ctas animate" data-animate="fade-up">
+          <a href="#get-started" class="btn btn--primary">Get Started</a>
+          <a href="https://github.com/wedjaw/burn-recsys" class="btn btn--ghost" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+        </div>
+        <div class="hero__metrics animate" data-animate="fade-up">
+          <div class="metric-card" data-count-to="0.49" data-count-decimals="2" data-count-suffix="">
+            <span class="metric-card__value">0</span>
+            <span class="metric-card__label">ms latency</span>
+          </div>
+          <div class="metric-card" data-count-to="2.31" data-count-decimals="2" data-count-suffix="M">
+            <span class="metric-card__value">0</span>
+            <span class="metric-card__label">parameters</span>
+          </div>
+          <div class="metric-card" data-count-to="100" data-count-decimals="0" data-count-suffix="%">
+            <span class="metric-card__value">0</span>
+            <span class="metric-card__label">success rate</span>
+          </div>
+          <div class="metric-card" data-count-to="1" data-count-decimals="0" data-count-suffix="">
+            <span class="metric-card__value">0</span>
+            <span class="metric-card__label">&lt;1ms inference</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Problem -->
+    <section class="problem section" id="problem">
+      <div class="container">
+        <span class="section__label animate" data-animate="fade-up">The Landscape</span>
+        <h2 class="section__headline animate" data-animate="fade-up">
+          Python dominates recommendation systems.<br />
+          <em>At a steep cost.</em>
+        </h2>
+        <div class="problem__cards">
+          <article class="problem__card animate" data-animate="fade-up">
+            <div class="problem__card-header">
+              <h3 class="problem__card-title">Python + PyTorch</h3>
+              <span class="problem__card-tag tag tag--rust">Legacy</span>
+            </div>
+            <div class="problem__card-metric">
+              <span class="problem__card-number">5–20ms</span>
+              <span class="problem__card-unit">inference</span>
+            </div>
+            <ul class="problem__card-issues">
+              <li>GIL contention</li>
+              <li>GC pauses</li>
+            </ul>
+            <div class="problem__card-cost">
+              <span class="problem__card-cost-value">$$$$$$$$</span>
+              <span class="problem__card-cost-label">infra cost</span>
+            </div>
+          </article>
+          <article class="problem__card animate" data-animate="fade-up">
+            <div class="problem__card-header">
+              <h3 class="problem__card-title">Hybrid</h3>
+              <span class="problem__card-tag tag--mocha">Complex</span>
+            </div>
+            <div class="problem__card-metric">
+              <span class="problem__card-number">2–10ms</span>
+              <span class="problem__card-unit">inference</span>
+            </div>
+            <ul class="problem__card-issues">
+              <li>FFI overhead</li>
+              <li>Dual runtime</li>
+            </ul>
+            <div class="problem__card-cost">
+              <span class="problem__card-cost-value">$$$$</span>
+              <span class="problem__card-cost-label">infra cost</span>
+            </div>
+          </article>
+          <article class="problem__card problem__card--featured animate" data-animate="fade-up">
+            <div class="problem__card-header">
+              <h3 class="problem__card-title problem__card-title--green">burn-recsys</h3>
+              <span class="problem__card-tag tag--forest">Optimal</span>
+            </div>
+            <div class="problem__card-metric">
+              <span class="problem__card-number problem__card-number--green">&lt;1ms</span>
+              <span class="problem__card-unit">inference</span>
+            </div>
+            <ul class="problem__card-issues">
+              <li>Zero locks</li>
+              <li>Compile-time safety</li>
+            </ul>
+            <div class="problem__card-cost">
+              <span class="problem__card-cost-value problem__card-cost-value--green">$$</span>
+              <span class="problem__card-cost-label">infra cost</span>
+            </div>
+          </article>
+        </div>
+        <p class="problem__footnote animate" data-animate="fade-up">
+          Most production recommender systems are Python-first. They work — until scale demands sub-millisecond latency, predictable memory, and deployment simplicity. Then the interpreter becomes the bottleneck.
+        </p>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="architecture section" id="architecture">
+      <div class="container">
+        <div class="architecture__grid">
+          <div class="architecture__text">
+            <span class="section__label animate" data-animate="fade-up">Architecture</span>
+            <h2 class="section__headline animate" data-animate="fade-up">
+              Two-stage retrieval.<br />
+              <em>Single binary.</em>
+            </h2>
+            <p class="architecture__body animate" data-animate="fade-up">
+              Stage 1: HNSW ANN retrieves the top-100 nearest item vectors from 7,988 candidates. Stage 2: The neural ranker scores each candidate with a sigmoid forward pass.
+            </p>
+            <p class="architecture__body-secondary animate" data-animate="fade-up">
+              Worker pool architecture.<br />
+              One model clone per thread.<br />
+              Zero lock contention. mpsc dispatch.
+            </p>
+            <ul class="architecture__highlights animate" data-animate="fade-up">
+              <li><span class="check">✓</span> HNSW ANN — instant-distance, Euclidean L2</li>
+              <li><span class="check">✓</span> Neural Ranker — sigmoid score, sort descending</li>
+              <li><span class="check">✓</span> Worker Pool — mpsc channel, zero contention</li>
+              <li><span class="check">✓</span> Same Binary — train, evaluate, serve</li>
+            </ul>
+          </div>
+          <div class="architecture__viz animate" data-animate="fade-up">
+            <div class="pipeline-viz">
+              <div class="pipeline-viz__node">
+                <span class="pipeline-viz__label">CSV</span>
+                <span class="pipeline-viz__title">Raw Data</span>
+                <span class="pipeline-viz__desc">Polars LazyFrame</span>
+              </div>
+              <div class="pipeline-viz__arrow">
+                <svg width="12" height="24" viewBox="0 0 12 24" fill="none">
+                  <line x1="6" y1="0" x2="6" y2="20" stroke="#B08968" stroke-width="2"/>
+                  <polygon points="6,24 0,16 12,16" fill="#B08968"/>
+                </svg>
+              </div>
+              <div class="pipeline-viz__node">
+                <span class="pipeline-viz__label">DATA</span>
+                <span class="pipeline-viz__title">Data Pipeline</span>
+                <span class="pipeline-viz__desc">Re-index · Dedup · Temporal Split</span>
+              </div>
+              <div class="pipeline-viz__arrow">
+                <svg width="12" height="24" viewBox="0 0 12 24" fill="none">
+                  <line x1="6" y1="0" x2="6" y2="20" stroke="#B08968" stroke-width="2"/>
+                  <polygon points="6,24 0,16 12,16" fill="#B08968"/>
+                </svg>
+              </div>
+              <div class="pipeline-viz__node">
+                <span class="pipeline-viz__label">TRAIN</span>
+                <span class="pipeline-viz__title">Trainer</span>
+                <span class="pipeline-viz__desc">Adam · BCE · Early Stop</span>
+              </div>
+              <div class="pipeline-viz__arrow">
+                <svg width="12" height="24" viewBox="0 0 12 24" fill="none">
+                  <line x1="6" y1="0" x2="6" y2="20" stroke="#B08968" stroke-width="2"/>
+                  <polygon points="6,24 0,16 12,16" fill="#B08968"/>
+                </svg>
+              </div>
+              <div class="pipeline-viz__node">
+                <span class="pipeline-viz__label">HNSW</span>
+                <span class="pipeline-viz__title">ANN Index</span>
+                <span class="pipeline-viz__desc">Item embeddings → graph</span>
+              </div>
+              <div class="pipeline-viz__arrow">
+                <svg width="12" height="24" viewBox="0 0 12 24" fill="none">
+                  <line x1="6" y1="0" x2="6" y2="20" stroke="#B08968" stroke-width="2"/>
+                  <polygon points="6,24 0,16 12,16" fill="#B08968"/>
+                </svg>
+              </div>
+              <div class="pipeline-viz__node pipeline-viz__node--split">
+                <div class="pipeline-viz__node-half">
+                  <span class="pipeline-viz__label">RANK</span>
+                  <span class="pipeline-viz__title">Neural Ranker</span>
+                  <span class="pipeline-viz__desc">Sigmoid scoring</span>
+                </div>
+                <div class="pipeline-viz__node-half">
+                  <span class="pipeline-viz__label">HTTP</span>
+                  <span class="pipeline-viz__title">Axum Server</span>
+                  <span class="pipeline-viz__desc">POST /recommend</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Models -->
+    <section class="models section" id="models">
+      <div class="container">
+        <span class="section__label animate" data-animate="fade-up">Models</span>
+        <h2 class="section__headline animate" data-animate="fade-up">
+          Three architectures.<br />
+          <em>One framework.</em>
+        </h2>
+        <p class="section__subtitle animate" data-animate="fade-up">From matrix factorization to deep factorization machines.</p>
+        <div class="models__grid">
+          <article class="model-card animate" data-animate="fade-up">
+            <span class="model-card__badge badge">GMF</span>
+            <h3 class="model-card__title">Generalized Matrix Factorization</h3>
+            <p class="model-card__desc">Neural interpretation of matrix factorization. Single embedding space with element-wise product.</p>
+            <div class="model-card__metrics">
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">HR@10</span>
+                <span class="model-card__metric-value">0.180</span>
+              </div>
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">NDCG@10</span>
+                <span class="model-card__metric-value">0.103</span>
+              </div>
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">Params</span>
+                <span class="model-card__metric-value">1.15M</span>
+              </div>
+            </div>
+            <div class="model-card__diagram" aria-label="GMF architecture: user and item embeddings with element-wise product">
+              <svg viewBox="0 0 260 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="10" y="10" width="50" height="24" rx="4" fill="#F1E7D8"/>
+                <text x="35" y="26" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#3E3128" font-weight="500">User</text>
+                <rect x="200" y="10" width="50" height="24" rx="4" fill="#F1E7D8"/>
+                <text x="225" y="26" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#3E3128" font-weight="500">Item</text>
+                <circle cx="130" cy="22" r="14" fill="none" stroke="#B08968" stroke-width="1.5"/>
+                <text x="130" y="27" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" fill="#B08968" font-weight="500">⊗</text>
+                <line x1="60" y1="22" x2="116" y2="22" stroke="#B08968" stroke-width="1"/>
+                <line x1="200" y1="22" x2="144" y2="22" stroke="#B08968" stroke-width="1"/>
+                <line x1="130" y1="36" x2="130" y2="52" stroke="#B08968" stroke-width="1"/>
+                <polygon points="130,56 126,48 134,48" fill="#B08968"/>
+              </svg>
+            </div>
+          </article>
+          <article class="model-card model-card--featured animate" data-animate="fade-up">
+            <span class="model-card__badge badge--featured">NeuMF</span>
+            <h3 class="model-card__title">Neural Matrix Factorization</h3>
+            <p class="model-card__desc">Dual-path architecture. GMF path + MLP path with ReLU tower. Fusion layer concatenates both.</p>
+            <div class="model-card__metrics">
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">HR@10</span>
+                <span class="model-card__metric-value model-card__metric-value--best">0.604</span>
+              </div>
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">NDCG@10</span>
+                <span class="model-card__metric-value model-card__metric-value--best">0.414</span>
+              </div>
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">Params</span>
+                <span class="model-card__metric-value">2.31M</span>
+              </div>
+            </div>
+            <div class="model-card__diagram" aria-label="NeuMF architecture: GMF and MLP paths converging to fusion layer">
+              <svg viewBox="0 0 280 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="10" y="10" width="45" height="20" rx="4" fill="#F1E7D8"/>
+                <text x="32" y="24" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="#3E3128" font-weight="500">User</text>
+                <rect x="225" y="10" width="45" height="20" rx="4" fill="#F1E7D8"/>
+                <text x="247" y="24" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="#3E3128" font-weight="500">Item</text>
+                <rect x="70" y="34" width="50" height="18" rx="4" fill="#E8DFD3"/>
+                <text x="95" y="45" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="#3E3128" font-weight="500">GMF</text>
+                <rect x="160" y="34" width="50" height="18" rx="4" fill="#E8DFD3"/>
+                <text x="185" y="45" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="#3E3128" font-weight="500">MLP</text>
+                <rect x="105" y="60" width="70" height="18" rx="4" fill="#B08968"/>
+                <text x="140" y="72" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#FAF7F2" font-weight="600">Fusion</text>
+                <line x1="32" y1="30" x2="95" y2="34" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="247" y1="30" x2="95" y2="34" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="32" y1="30" x2="185" y2="34" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="247" y1="30" x2="185" y2="34" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="120" y1="52" x2="120" y2="60" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="185" y1="52" x2="160" y2="60" stroke="#B08968" stroke-width="0.8"/>
+              </svg>
+            </div>
+          </article>
+          <article class="model-card animate" data-animate="fade-up">
+            <span class="model-card__badge badge">DeepFM</span>
+            <h3 class="model-card__title">Deep Factorization Machine</h3>
+            <p class="model-card__desc">Shared embeddings for FM and Deep paths. First-order + second-order + MLP combined.</p>
+            <div class="model-card__metrics">
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">HR@10</span>
+                <span class="model-card__metric-value model-card__metric-value--dash">—</span>
+              </div>
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">NDCG@10</span>
+                <span class="model-card__metric-value model-card__metric-value--dash">—</span>
+              </div>
+              <div class="model-card__metric">
+                <span class="model-card__metric-label">Params</span>
+                <span class="model-card__metric-value">1.19M</span>
+              </div>
+            </div>
+            <div class="model-card__diagram" aria-label="DeepFM architecture: FM and Deep paths combined">
+              <svg viewBox="0 0 260 65" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="10" y="10" width="50" height="22" rx="4" fill="#F1E7D8"/>
+                <text x="35" y="24" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#3E3128" font-weight="500">User</text>
+                <rect x="200" y="10" width="50" height="22" rx="4" fill="#F1E7D8"/>
+                <text x="225" y="24" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#3E3128" font-weight="500">Item</text>
+                <rect x="65" y="30" width="55" height="18" rx="4" fill="#E8DFD3"/>
+                <text x="92" y="41" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="#3E3128" font-weight="500">FM</text>
+                <rect x="140" y="30" width="55" height="18" rx="4" fill="#E8DFD3"/>
+                <text x="167" y="41" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="#3E3128" font-weight="500">Deep</text>
+                <rect x="95" y="56" width="70" height="16" rx="4" fill="#B08968"/>
+                <text x="130" y="67" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#FAF7F2" font-weight="600">Combine</text>
+                <line x1="35" y1="32" x2="92" y2="30" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="225" y1="32" x2="92" y2="30" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="35" y1="32" x2="167" y2="30" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="225" y1="32" x2="167" y2="30" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="92" y1="48" x2="130" y2="56" stroke="#B08968" stroke-width="0.8"/>
+                <line x1="167" y1="48" x2="130" y2="56" stroke="#B08968" stroke-width="0.8"/>
+              </svg>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Performance -->
+    <section class="performance section grain" id="performance">
+      <div class="container">
+        <span class="section__label section__label--light animate" data-animate="fade-up">Performance</span>
+        <h2 class="section__headline section__headline--light animate" data-animate="fade-up">
+          Sub-millisecond inference.<br />
+          <em>Predictably.</em>
+        </h2>
+        <div class="perf-table animate" data-animate="fade-up">
+          <div class="perf-table__header">
+            <span class="perf-table__col perf-table__col--scenario">Scenario</span>
+            <span class="perf-table__col">Avg</span>
+            <span class="perf-table__col">p50</span>
+            <span class="perf-table__col">p90</span>
+            <span class="perf-table__col">p95</span>
+            <span class="perf-table__col">p99</span>
+          </div>
+          <div class="perf-table__row">
+            <span class="perf-table__col perf-table__col--scenario">3 VUs, random</span>
+            <span class="perf-table__col perf-table__col--num">1.29ms</span>
+            <span class="perf-table__col perf-table__col--num">1.22ms</span>
+            <span class="perf-table__col perf-table__col--num">1.88ms</span>
+            <span class="perf-table__col perf-table__col--num">1.98ms</span>
+            <span class="perf-table__col perf-table__col--num">2.13ms</span>
+          </div>
+          <div class="perf-table__row">
+            <span class="perf-table__col perf-table__col--scenario">With candidates</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num perf-table__col--highlight">0.12ms</span>
+          </div>
+          <div class="perf-table__row perf-table__row--last">
+            <span class="perf-table__col perf-table__col--scenario">Full ANN</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num">—</span>
+            <span class="perf-table__col perf-table__col--num perf-table__col--highlight">0.97ms</span>
+          </div>
+        </div>
+        <p class="perf-table__note animate" data-animate="fade-up">100% success rate. Zero errors across all load test requests. M4 CPU, 10 worker threads.</p>
+        <blockquote class="perf-quote animate" data-animate="fade-up">
+          <p class="perf-quote__text">"The ~0.5ms median inference is not from kernel optimization — it's from eliminating the Python interpreter layer entirely."</p>
+          <cite class="perf-quote__cite">— Architecture Notes</cite>
+        </blockquote>
+      </div>
+    </section>
+
+    <!-- Pipeline / How It Works -->
+    <section class="pipeline section" id="pipeline">
+      <div class="container">
+        <span class="section__label animate" data-animate="fade-up">Pipeline</span>
+        <h2 class="section__headline animate" data-animate="fade-up">
+          From CSV to recommendation.<br />
+          <em>In seven commands.</em>
+        </h2>
+        <div class="pipeline__steps">
+          <article class="pipeline-step animate" data-animate="fade-up">
+            <div class="pipeline-step__content">
+              <span class="pipeline-step__number" aria-hidden="true">01</span>
+              <h3 class="pipeline-step__title">Load</h3>
+              <p class="pipeline-step__desc">Polars LazyFrame scans CSV in a single multithreaded pass. Re-indexing builds hash maps in O(n). 694K rows in &lt;200ms.</p>
+            </div>
+            <div class="pipeline-step__viz" aria-label="CSV parsing illustration">
+              <svg viewBox="0 0 200 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="30" y="20" width="140" height="80" rx="6" fill="#FDFBF7" stroke="#D4C8B8" stroke-width="1"/>
+                <line x1="30" y1="44" x2="170" y2="44" stroke="#D4C8B8" stroke-width="0.5"/>
+                <line x1="30" y1="64" x2="170" y2="64" stroke="#D4C8B8" stroke-width="0.5"/>
+                <line x1="30" y1="84" x2="170" y2="84" stroke="#D4C8B8" stroke-width="0.5"/>
+                <text x="50" y="36" font-family="JetBrains Mono,monospace" font-size="8" fill="#B08968">user_id,item</text>
+                <text x="50" y="56" font-family="JetBrains Mono,monospace" font-size="8" fill="#8D7B68">1,com.foo</text>
+                <text x="50" y="76" font-family="JetBrains Mono,monospace" font-size="8" fill="#8D7B68">2,com.bar</text>
+                <text x="50" y="96" font-family="JetBrains Mono,monospace" font-size="8" fill="#8D7B68">3,com.baz</text>
+                <rect x="172" y="48" width="28" height="24" rx="4" fill="#B08968" opacity="0.9"/>
+                <text x="186" y="63" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="#FAF7F2" font-weight="600">&lt;200ms</text>
+              </svg>
+            </div>
+          </article>
+          <article class="pipeline-step pipeline-step--reverse animate" data-animate="fade-up">
+            <div class="pipeline-step__content">
+              <span class="pipeline-step__number" aria-hidden="true">02</span>
+              <h3 class="pipeline-step__title">Train</h3>
+              <p class="pipeline-step__desc">Adam optimizer, binary cross-entropy, early stopping by HR@k patience. Auto-saves best.mpk + config.toml. 5 epochs, ~4 minutes on M4.</p>
+            </div>
+            <div class="pipeline-step__viz" aria-label="Training loss curve illustration">
+              <svg viewBox="0 0 200 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="30" y="20" width="140" height="80" rx="6" fill="#FDFBF7" stroke="#D4C8B8" stroke-width="1"/>
+                <polyline points="40,82 55,75 70,68 85,62 100,55 115,48 130,42 145,38 160,35" stroke="#B08968" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="160" cy="35" r="3" fill="#B08968"/>
+                <text x="165" y="33" font-family="JetBrains Mono,monospace" font-size="7" fill="#B08968">best</text>
+                <line x1="40" y1="82" x2="40" y2="90" stroke="#D4C8B8" stroke-width="0.5"/>
+                <line x1="160" y1="35" x2="160" y2="90" stroke="#D4C8B8" stroke-width="0.5" stroke-dasharray="2,2"/>
+                <text x="35" y="94" font-family="JetBrains Mono,monospace" font-size="7" fill="#8D7B68">ep.1</text>
+                <text x="155" y="94" font-family="JetBrains Mono,monospace" font-size="7" fill="#8D7B68">ep.5</text>
+                <text x="85" y="106" font-family="Inter,sans-serif" font-size="8" fill="#8D7B68" text-anchor="middle">BCE Loss</text>
+              </svg>
+            </div>
+          </article>
+          <article class="pipeline-step animate" data-animate="fade-up">
+            <div class="pipeline-step__content">
+              <span class="pipeline-step__number" aria-hidden="true">03</span>
+              <h3 class="pipeline-step__title">Index</h3>
+              <p class="pipeline-step__desc">All item embeddings feed into an HNSW graph at server startup. instant-distance, Euclidean L2. Retrieval: ~0.12ms.</p>
+            </div>
+            <div class="pipeline-step__viz" aria-label="HNSW graph illustration">
+              <svg viewBox="0 0 200 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="30" y="20" width="140" height="80" rx="6" fill="#FDFBF7" stroke="#D4C8B8" stroke-width="1"/>
+                <circle cx="70" cy="45" r="6" fill="#E8DFD3" stroke="#B08968" stroke-width="1"/>
+                <circle cx="110" cy="40" r="6" fill="#E8DFD3" stroke="#B08968" stroke-width="1"/>
+                <circle cx="90" cy="65" r="6" fill="#E8DFD3" stroke="#B08968" stroke-width="1"/>
+                <circle cx="130" cy="60" r="6" fill="#E8DFD3" stroke="#B08968" stroke-width="1"/>
+                <circle cx="150" cy="45" r="6" fill="#B08968" stroke="#B08968" stroke-width="1.5"/>
+                <circle cx="55" cy="65" r="6" fill="#E8DFD3" stroke="#B08968" stroke-width="1"/>
+                <line x1="70" y1="45" x2="110" y2="40" stroke="#B08968" stroke-width="0.6"/>
+                <line x1="70" y1="45" x2="90" y2="65" stroke="#B08968" stroke-width="0.6"/>
+                <line x1="110" y1="40" x2="130" y2="60" stroke="#B08968" stroke-width="0.6"/>
+                <line x1="90" y1="65" x2="130" y2="60" stroke="#B08968" stroke-width="0.6"/>
+                <line x1="90" y1="65" x2="55" y2="65" stroke="#B08968" stroke-width="0.6"/>
+                <line x1="130" y1="60" x2="150" y2="45" stroke="#B08968" stroke-width="0.8"/>
+                <text x="150" y="43" font-family="JetBrains Mono,monospace" font-size="6" fill="#FAF7F2" text-anchor="middle">Q</text>
+              </svg>
+            </div>
+          </article>
+          <article class="pipeline-step pipeline-step--reverse animate" data-animate="fade-up">
+            <div class="pipeline-step__content">
+              <span class="pipeline-step__number" aria-hidden="true">04</span>
+              <h3 class="pipeline-step__title">Serve</h3>
+              <p class="pipeline-step__desc">Axum HTTP API. mpsc worker pool. One model clone per thread. POST /recommend returns ranked items in &lt;1ms. OpenTelemetry metrics out of the box.</p>
+            </div>
+            <div class="pipeline-step__viz" aria-label="Server request-response illustration">
+              <svg viewBox="0 0 200 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="30" y="20" width="140" height="80" rx="6" fill="#FDFBF7" stroke="#D4C8B8" stroke-width="1"/>
+                <rect x="65" y="35" width="70" height="40" rx="4" fill="#B08968"/>
+                <text x="100" y="58" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#FAF7F2" font-weight="600">Axum</text>
+                <path d="M 30 50 L 60 50" stroke="#4A7C59" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+                <text x="35" y="44" font-family="JetBrains Mono,monospace" font-size="6" fill="#4A7C59">POST</text>
+                <path d="M 140 60 L 175 60" stroke="#B08968" stroke-width="1.5"/>
+                <text x="150" y="54" font-family="JetBrains Mono,monospace" font-size="6" fill="#B08968">ranked</text>
+                <defs>
+                  <marker id="arrow-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                    <polygon points="0,0 6,3 0,6" fill="#4A7C59"/>
+                  </marker>
+                </defs>
+              </svg>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tech Stack -->
+    <section class="tech-stack section" id="tech-stack">
+      <div class="container">
+        <span class="section__label animate" data-animate="fade-up">Built With</span>
+        <h2 class="section__headline animate" data-animate="fade-up">Technology Stack</h2>
+        <p class="section__subtitle animate" data-animate="fade-up">Every dependency chosen with intention.</p>
+        <div class="tech-stack__list">
+          <div class="tech-stack__item animate" data-animate="fade-up">
+            <div class="tech-stack__item-header">
+              <span class="tech-stack__category">Deep Learning</span>
+              <span class="tech-stack__name">Burn</span>
+              <span class="tech-stack__version">0.17</span>
+            </div>
+            <hr class="tech-stack__divider" />
+            <p class="tech-stack__desc">Forward pass, backprop, model definition. Vendor-neutral.</p>
+          </div>
+          <div class="tech-stack__item animate" data-animate="fade-up">
+            <div class="tech-stack__item-header">
+              <span class="tech-stack__category">Data Pipeline</span>
+              <span class="tech-stack__name">Polars</span>
+              <span class="tech-stack__version">0.46</span>
+            </div>
+            <hr class="tech-stack__divider" />
+            <p class="tech-stack__desc">Lazy CSV loading, dedup, re-index. Single pass, zero copies.</p>
+          </div>
+          <div class="tech-stack__item animate" data-animate="fade-up">
+            <div class="tech-stack__item-header">
+              <span class="tech-stack__category">HTTP Server</span>
+              <span class="tech-stack__name">Axum</span>
+              <span class="tech-stack__version">0.7</span>
+            </div>
+            <hr class="tech-stack__divider" />
+            <p class="tech-stack__desc">Async routing, middleware, OpenAPI docs via utoipa.</p>
+          </div>
+          <div class="tech-stack__item animate" data-animate="fade-up">
+            <div class="tech-stack__item-header">
+              <span class="tech-stack__category">ANN Retrieval</span>
+              <span class="tech-stack__name">instant-distance</span>
+              <span class="tech-stack__version">0.6</span>
+            </div>
+            <hr class="tech-stack__divider" />
+            <p class="tech-stack__desc">HNSW vector search. Euclidean L2. Logarithmic lookup time.</p>
+          </div>
+          <div class="tech-stack__item animate" data-animate="fade-up">
+            <div class="tech-stack__item-header">
+              <span class="tech-stack__category">Observability</span>
+              <span class="tech-stack__name">OpenTelemetry</span>
+              <span class="tech-stack__version">0.22</span>
+            </div>
+            <hr class="tech-stack__divider" />
+            <p class="tech-stack__desc">Metrics pipeline. Vendor-neutral. stdout → Prometheus ready.</p>
+          </div>
+          <div class="tech-stack__item animate" data-animate="fade-up">
+            <div class="tech-stack__item-header">
+              <span class="tech-stack__category">Async Runtime</span>
+              <span class="tech-stack__name">Tokio</span>
+              <span class="tech-stack__version">1</span>
+            </div>
+            <hr class="tech-stack__divider" />
+            <p class="tech-stack__desc">Work-stealing thread pool. The foundation of everything async.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Benchmarks -->
+    <section class="benchmarks section" id="benchmarks">
+      <div class="container">
+        <span class="section__label animate" data-animate="fade-up">Benchmarks</span>
+        <h2 class="section__headline animate" data-animate="fade-up">
+          Myket dataset.<br />
+          <em>694K interactions.</em>
+        </h2>
+        <div class="benchmarks__grid">
+          <article class="benchmark-card animate" data-animate="fade-up">
+            <h3 class="benchmark-card__title">GMF</h3>
+            <p class="benchmark-card__subtitle">Generalized Matrix Factorization</p>
+            <div class="benchmark-card__metrics">
+              <div>
+                <span class="benchmark-card__label">HR@10</span>
+                <span class="benchmark-card__value">0.180</span>
+              </div>
+              <div>
+                <span class="benchmark-card__label">NDCG@10</span>
+                <span class="benchmark-card__value">0.103</span>
+              </div>
+              <div>
+                <span class="benchmark-card__label">Params</span>
+                <span class="benchmark-card__value">1.15M</span>
+              </div>
+            </div>
+            <div class="benchmark-card__bar">
+              <span class="benchmark-card__bar-fill" style="--bar-width: 30%"></span>
+            </div>
+          </article>
+          <article class="benchmark-card benchmark-card--featured animate" data-animate="fade-up">
+            <h3 class="benchmark-card__title">NeuMF</h3>
+            <p class="benchmark-card__subtitle">Neural Matrix Factorization</p>
+            <div class="benchmark-card__metrics">
+              <div>
+                <span class="benchmark-card__label">HR@10</span>
+                <span class="benchmark-card__value benchmark-card__value--best">0.604</span>
+              </div>
+              <div>
+                <span class="benchmark-card__label">NDCG@10</span>
+                <span class="benchmark-card__value benchmark-card__value--best">0.414</span>
+              </div>
+              <div>
+                <span class="benchmark-card__label">Params</span>
+                <span class="benchmark-card__value">2.31M</span>
+              </div>
+            </div>
+            <div class="benchmark-card__bar">
+              <span class="benchmark-card__bar-fill benchmark-card__bar-fill--featured" style="--bar-width: 100%"></span>
+            </div>
+          </article>
+        </div>
+        <div class="benchmark-info animate" data-animate="fade-up">
+          <span>Dataset: <strong>Myket</strong> (Android Apps)</span>
+          <span class="benchmark-info__sep">·</span>
+          <span>Users: <strong>10,000</strong></span>
+          <span class="benchmark-info__sep">·</span>
+          <span>Items: <strong>7,988</strong></span>
+          <span class="benchmark-info__sep">·</span>
+          <span>Interactions: <strong>694,121</strong></span>
+          <span class="benchmark-info__sep">·</span>
+          <span>Protocol: Leave-one-out temporal split</span>
+          <span class="benchmark-info__sep">·</span>
+          <span>Hardware: Apple M4 CPU</span>
+          <span class="benchmark-info__sep">·</span>
+          <span>Epochs: 5</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta section grain" id="get-started">
+      <div class="container">
+        <div class="cta__inner">
+          <h2 class="cta__headline animate" data-animate="fade-up">Ready to build?</h2>
+          <p class="cta__subtitle animate" data-animate="fade-up">Seven commands from clone to recommendation. No Python runtime. No dependency hell. Just Rust.</p>
+          <div class="cta__buttons animate" data-animate="fade-up">
+            <a href="https://github.com/wedjaw/burn-recsys" class="btn btn--primary" target="_blank" rel="noopener noreferrer">Get Started →</a>
+            <a href="https://github.com/wedjaw/burn-recsys" class="btn btn--ghost" target="_blank" rel="noopener noreferrer">Star on GitHub →</a>
+          </div>
+          <div class="cta__code animate" data-animate="fade-up">
+            <button class="cta__code-copy" aria-label="Copy code">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="3" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.2" fill="none"/>
+                <rect x="1" y="1" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.5"/>
+              </svg>
+              <span class="cta__code-tooltip">Copied</span>
+            </button>
+            <pre><code>$ git clone https://github.com/wedjaw/burn-recsys
+$ cd burn-recsys
+$ uv run python scripts/download_myket.py
+$ cargo run --release --example myket_ncf
+$ cargo run --release --bin server
+$ curl -X POST http://localhost:3000/recommend \
+    -H 'x-api-key: admin_bismillah' \
+    -d '{"user_id": 42}'</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer grain" id="footer">
+    <div class="container">
+      <div class="footer__brand">
+        <a href="#" class="nav__logo" aria-label="burn-recsys home">
+          <span class="nav__monogram">BR</span>
+          <span class="nav__wordmark">burn-recsys</span>
+        </a>
+        <p class="footer__tagline">Neural Recommendation Engine in Rust</p>
+      </div>
+      <div class="footer__grid">
+        <div class="footer__col">
+          <h4 class="footer__col-title">Built With</h4>
+          <ul class="footer__col-list">
+            <li>Burn 0.17</li>
+            <li>Polars 0.46</li>
+            <li>Axum 0.7</li>
+            <li>OpenTelemetry</li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Resources</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/wedjaw/burn-recsys">Documentation</a></li>
+            <li><a href="https://github.com/wedjaw/burn-recsys">API Reference</a></li>
+            <li><a href="https://github.com/wedjaw/burn-recsys">Changelog</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Connect</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/wedjaw/burn-recsys">GitHub</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer__bottom">
+        <span>© 2026 burn-recsys · MIT License · Open Source</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

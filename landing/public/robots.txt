@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://wedjaw.github.io/burn-recsys/sitemap.xml
